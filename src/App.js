@@ -28,6 +28,7 @@ const coinflipABI = [
   { inputs: [], name: "getGlobalStats", outputs: [{ internalType: "uint256", name: "totalBet", type: "uint256" }], stateMutability: "view", type: "function" }
 ];
 
+/* Fixed: added pendingPrizes(address) to Dice and Wheel ABIs */
 const diceABI = [
   { inputs: [], name: "claimPrize", outputs: [], stateMutability: "nonpayable", type: "function" },
   { inputs: [], name: "deposit", outputs: [], stateMutability: "payable", type: "function" },
@@ -43,6 +44,7 @@ const diceABI = [
   { inputs: [], name: "maxBet", outputs: [{ internalType: "uint256", name: "", type: "uint256" }], stateMutability: "view", type: "function" },
   { inputs: [], name: "minBet", outputs: [{ internalType: "uint256", name: "", type: "uint256" }], stateMutability: "view", type: "function" },
   { inputs: [], name: "owner", outputs: [{ internalType: "address", name: "", type: "address" }], stateMutability: "view", type: "function" },
+  { inputs: [{ internalType: "address", name: "", type: "address" }], name: "pendingPrizes", outputs: [{ internalType: "uint256", name: "", type: "uint256" }], stateMutability: "view", type: "function" },
   { inputs: [{ internalType: "address", name: "user", type: "address" }], name: "getUserStats", outputs: [{ internalType: "uint256", name: "totalBet", type: "uint256" }, { internalType: "uint256", name: "totalWon", type: "uint256" }, { internalType: "uint256", name: "totalLost", type: "uint256" }], stateMutability: "view", type: "function" },
   { inputs: [], name: "getGlobalStats", outputs: [{ internalType: "uint256", name: "totalBet", type: "uint256" }], stateMutability: "view", type: "function" }
 ];
@@ -62,6 +64,7 @@ const wheelABI = [
   { inputs: [], name: "maxBet", outputs: [{ internalType: "uint256", name: "", type: "uint256" }], stateMutability: "view", type: "function" },
   { inputs: [], name: "minBet", outputs: [{ internalType: "uint256", name: "", type: "uint256" }], stateMutability: "view", type: "function" },
   { inputs: [], name: "owner", outputs: [{ internalType: "address", name: "", type: "address" }], stateMutability: "view", type: "function" },
+  { inputs: [{ internalType: "address", name: "", type: "address" }], name: "pendingPrizes", outputs: [{ internalType: "uint256", name: "", type: "uint256" }], stateMutability: "view", type: "function" },
   { inputs: [{ internalType: "address", name: "user", type: "address" }], name: "getUserStats", outputs: [{ internalType: "uint256", name: "totalBet", type: "uint256" }, { internalType: "uint256", name: "totalWon", type: "uint256" }, { internalType: "uint256", name: "totalLost", type: "uint256" }], stateMutability: "view", type: "function" }
 ];
 
@@ -616,7 +619,7 @@ function App() {
           </div>
 
           <div className="flex items-center" ref={walletMenuRef}>
-            <button className={`link-btn ${activePage === "profile" ? "active" : ""}`} onClick={() => setActivePage("profile")}>Profile</button>
+            <button className="link-btn" onClick={() => setActivePage("profile")}>Profile</button>
             <button className="wallet-btn" onClick={connectWallet}>
               {walletAddress ? shortAddr(walletAddress) : "Connect Wallet"}
             </button>
