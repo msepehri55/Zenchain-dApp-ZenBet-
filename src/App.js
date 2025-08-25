@@ -28,7 +28,7 @@ const coinflipABI = [
   { inputs: [], name: "getGlobalStats", outputs: [{ internalType: "uint256", name: "totalBet", type: "uint256" }], stateMutability: "view", type: "function" }
 ];
 
-/* Fixed: added pendingPrizes(address) to Dice and Wheel ABIs */
+/* Fixed */
 const diceABI = [
   { inputs: [], name: "claimPrize", outputs: [], stateMutability: "nonpayable", type: "function" },
   { inputs: [], name: "deposit", outputs: [], stateMutability: "payable", type: "function" },
