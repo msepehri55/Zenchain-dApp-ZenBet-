@@ -4,7 +4,7 @@ import { ethers } from "ethers";
 
 /* ===================== Branding ===================== */
 const SITE_NAME = "ZenBet";
-const LOGO_SRC  = (typeof process !== "undefined" && process.env && process.env.PUBLIC_URL ? process.env.PUBLIC_URL : "") + "/logo.png";
+const LOGO_SRC  = "logo.png";
 
 /* ===================== Addresses ===================== */
 const coinflipAddress = "0x666ab08c1d8dca5d53162118a482fb51244d0e92";
