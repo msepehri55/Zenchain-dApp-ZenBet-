@@ -2,10 +2,14 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { ethers } from "ethers";
 
+/* ===================== Branding ===================== */
+const SITE_NAME = "ZenBet";
+const LOGO_SRC  = (typeof process !== "undefined" && process.env && process.env.PUBLIC_URL ? process.env.PUBLIC_URL : "") + "/logo.png";
+
 /* ===================== Addresses ===================== */
-const coinflipAddress = "0x8d419a71b059b08ec1758feda0bc793cdb1a3fe7";
-const diceAddress     = "0x4887094cfd22928e84f61a26e959108ead0cc3fc";
-const wheelAddress    = "0x1a39e9eaad240640aa00b04a8f9f244965e3dea0";
+const coinflipAddress = "0x666ab08c1d8dca5d53162118a482fb51244d0e92";
+const diceAddress     = "0x3b5e669589f792f43aad8eb995842dcd7192f430";
+const wheelAddress    = "0x08d8f9b5200e370fd76a1fd184f5dce2e4a86f3b";
 
 /* ===================== ABIs ===================== */
 const coinflipABI = [
@@ -28,7 +32,6 @@ const coinflipABI = [
   { inputs: [], name: "getGlobalStats", outputs: [{ internalType: "uint256", name: "totalBet", type: "uint256" }], stateMutability: "view", type: "function" }
 ];
 
-/* Fixed: added pendingPrizes(address) to Dice and Wheel ABIs */
 const diceABI = [
   { inputs: [], name: "claimPrize", outputs: [], stateMutability: "nonpayable", type: "function" },
   { inputs: [], name: "deposit", outputs: [], stateMutability: "payable", type: "function" },
@@ -65,6 +68,17 @@ const wheelABI = [
   { inputs: [], name: "minBet", outputs: [{ internalType: "uint256", name: "", type: "uint256" }], stateMutability: "view", type: "function" },
   { inputs: [], name: "owner", outputs: [{ internalType: "address", name: "", type: "address" }], stateMutability: "view", type: "function" },
   { inputs: [{ internalType: "address", name: "", type: "address" }], name: "pendingPrizes", outputs: [{ internalType: "uint256", name: "", type: "uint256" }], stateMutability: "view", type: "function" },
+
+  // Additions for robustness
+  { inputs: [], name: "availableBank", outputs: [{ internalType: "uint256", name: "", type: "uint256" }], stateMutability: "view", type: "function" },
+  { inputs: [{ internalType: "address", name: "user", type: "address" }], name: "getLastOutcome", outputs: [
+      { internalType: "uint8", name: "outcomeIndex", type: "uint8" },
+      { internalType: "uint16", name: "multiplierX10", type: "uint16" },
+      { internalType: "bool", name: "won", type: "bool" },
+      { internalType: "uint256", name: "amount", type: "uint256" },
+      { internalType: "uint64", name: "nonce", type: "uint64" }
+    ], stateMutability: "view", type: "function" },
+
   { inputs: [{ internalType: "address", name: "user", type: "address" }], name: "getUserStats", outputs: [{ internalType: "uint256", name: "totalBet", type: "uint256" }, { internalType: "uint256", name: "totalWon", type: "uint256" }, { internalType: "uint256", name: "totalLost", type: "uint256" }], stateMutability: "view", type: "function" }
 ];
 
@@ -107,16 +121,14 @@ const inferProviderName = (p, fallback = "Injected") => {
 
 /* ===================== Component ===================== */
 function App() {
-  const [activePage, setActivePage] = useState("games"); // games | profile
-  const [activeGame, setActiveGame] = useState("coinflip"); // coinflip | dice | wheel | coming
+  const [activePage, setActivePage] = useState("games");
+  const [activeGame, setActiveGame] = useState("coinflip");
 
   /* Wallet */
   const [walletAddress, setWalletAddress] = useState("");
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
-
-  // Injected wallet chooser
   const [walletModalOpen, setWalletModalOpen] = useState(false);
-  const [providers, setProviders] = useState([]); // [{provider, name, rdns}]
+  const [providers, setProviders] = useState([]);
   const [selectedProvider, setSelectedProvider] = useState(null);
 
   /* CoinFlip */
@@ -149,12 +161,19 @@ function App() {
   /* UX */
   const [error, setError] = useState("");
   const [uiPhase, setUiPhase] = useState("idle"); // idle | waiting | reveal
-  const [overlay, setOverlay] = useState(null);   // { game }
-  const [modal, setModal] = useState(null);       // { status, message }
+  const [overlay, setOverlay] = useState(null);
+  const [modal, setModal] = useState(null);
 
   /* Reveal transforms */
   const [coinAngle, setCoinAngle] = useState(0);
   const [diceAngles, setDiceAngles] = useState({ x: 0, y: 0 });
+
+  const [flipRunId, setFlipRunId] = useState(0);
+  const [diceRunId, setDiceRunId] = useState(0);
+  const [coinTransition, setCoinTransition] = useState(false);
+  const [diceTransition, setDiceTransition] = useState(false);
+  const coinInnerRef = useRef(null);
+  const diceInnerRef = useRef(null);
 
   /* Stats */
   const [statsOpen, setStatsOpen] = useState(false);
@@ -218,14 +237,14 @@ function App() {
 
       /* 3D Coin */
       .coin3d { width: 160px; height: 160px; perspective: 1000px; }
-      .coin3d-inner { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; }
+      .coin3d-inner { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; will-change: transform; }
       .coin-face { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; border-radius:50%; backface-visibility: hidden; border: 2px solid #f59e0b; font-weight:900; color:#0f172a; font-size: 20px; }
       .coin-heads { background: radial-gradient(circle at 30% 30%, #fff7ed, #f59e0b 55%, #b45309); transform: rotateY(0deg) translateZ(2px); }
       .coin-tails { background: radial-gradient(circle at 70% 70%, #e0f2fe, #93c5fd 55%, #1d4ed8); transform: rotateY(180deg) translateZ(2px); }
 
       /* Dice cube */
       .dice-scene { width: 160px; height: 160px; perspective: 900px; }
-      .dice-cube { width: 160px; height: 160px; position: relative; transform-style: preserve-3d; }
+      .dice-cube { width: 160px; height: 160px; position: relative; transform-style: preserve-3d; will-change: transform; }
       .dice-face { position: absolute; width: 160px; height: 160px; background: #fff; border: 2px solid #0ea5e9; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 46px; color: #0f172a; }
       .dice-face.one   { transform: rotateY(  0deg) translateZ(80px); }
       .dice-face.six   { transform: rotateY(180deg) translateZ(80px); }
@@ -275,19 +294,19 @@ function App() {
     document.head.appendChild(style);
   }, []);
 
+  useEffect(() => { document.title = SITE_NAME; }, []);
+
   const providerRPC = useMemo(() => new ethers.JsonRpcProvider("https://zenchain-testnet.api.onfinality.io/public"), []);
 
   /* Provider discovery (EIP-6963 + legacy) */
   useEffect(() => {
     const map = new Map();
-
     const pushProvider = (provider, info = {}) => {
       if (!provider) return;
       const name = info.name || inferProviderName(provider);
       const key = info.rdns || name + (provider.isMetaMask ? "-mm" : "") + (provider.isRabby ? "-rabby" : "") + (provider.isCoinbaseWallet ? "-cbw" : "");
       if (!map.has(key)) map.set(key, { provider, name, rdns: info.rdns || "" });
     };
-
     const onAnnounce = (e) => {
       try {
         const { provider, info } = e.detail || {};
@@ -295,14 +314,11 @@ function App() {
         setProviders(Array.from(map.values()));
       } catch {}
     };
-
     window.addEventListener("eip6963:announceProvider", onAnnounce);
     try { window.dispatchEvent(new Event("eip6963:requestProvider")); } catch {}
-
     const legacy = window.ethereum?.providers?.length ? window.ethereum.providers : (window.ethereum ? [window.ethereum] : []);
     legacy.forEach((p) => pushProvider(p));
     setProviders(Array.from(map.values()));
-
     return () => window.removeEventListener("eip6963:announceProvider", onAnnounce);
   }, []);
 
@@ -321,10 +337,7 @@ function App() {
   };
 
   const connectWallet = async () => {
-    if (walletAddress) {
-      setWalletMenuOpen((v) => !v);
-      return;
-    }
+    if (walletAddress) { setWalletMenuOpen((v) => !v); return; }
     setWalletModalOpen(true);
   };
 
@@ -351,7 +364,6 @@ function App() {
     setError("");
   };
 
-  // Attach account/chain listeners to selected provider only
   useEffect(() => {
     if (!selectedProvider || !selectedProvider.on) return;
     const onAccountsChanged = (accs) => setWalletAddress(accs?.[0] || "");
@@ -422,24 +434,33 @@ function App() {
         try { const p = iface.parseLog(log); if (p?.name === "Flipped") { won = Boolean(p.args.won); side = Boolean(p.args.result) ? "Heads" : "Tails"; break; } } catch {}
       }
 
+      setFlipRunId((v) => v + 1);
       setUiPhase("reveal"); setOverlay({ game: "coinflip" });
+      setCoinTransition(false);
       setCoinAngle(0);
       requestAnimationFrame(() => {
-        const spins = 4 * 360;
-        const offset = side === "Heads" ? 0 : 180;
-        setCoinAngle(spins + offset);
+        if (coinInnerRef.current) { void coinInnerRef.current.getBoundingClientRect(); }
+        requestAnimationFrame(() => {
+          const spins = 4 * 360;
+          const offset = side === "Heads" ? 0 : 180;
+          setCoinTransition(true);
+          setCoinAngle(spins + offset);
+        });
       });
-      setTimeout(() => { setUiPhase("idle"); setOverlay(null); showModal(won ? "win" : "lose", won ? `You won! ${side}` : `You lost! ${side}`); }, COIN_REVEAL_MS + 150);
 
+      setTimeout(() => { setUiPhase("idle"); setOverlay(null); showModal(won ? "win" : "lose", won ? `You won! ${side}` : `You lost! ${side}`); }, COIN_REVEAL_MS + 150);
       await Promise.all([loadCFPending(), loadCFMeta(), refreshStats()]);
       setError("");
-    } catch (err) { console.error(err); setUiPhase("idle"); setOverlay(null); setError(err?.shortMessage || err?.message || "Transaction failed!"); }
+    } catch (err) {
+      console.error(err);
+      setUiPhase("idle"); setOverlay(null);
+      const msg = (err?.shortMessage || err?.message || "Transaction failed!");
+      setError(msg.includes("InsufficientBank") ? "Bank liquidity too low for this bet. Try a smaller amount." : msg);
+    }
   };
 
   /* Dice */
-  const faceOffsets = (f) => {
-    switch (f) { case 1: return { x: 0, y: 0 }; case 2: return { x: 0, y: -90 }; case 3: return { x: -90, y: 0 }; case 4: return { x: 90, y: 0 }; case 5: return { x: 0, y: 90 }; case 6: return { x: 0, y: 180 }; default: return { x: 0, y: 0 }; }
-  };
+  const faceOffsets = (f) => { switch (f) { case 1: return { x: 0, y: 0 }; case 2: return { x: 0, y: -90 }; case 3: return { x: -90, y: 0 }; case 4: return { x: 90, y: 0 }; case 5: return { x: 0, y: 90 }; case 6: return { x: 0, y: 180 }; default: return { x: 0, y: 0 }; } };
   const rollDice = async () => {
     if (!walletAddress) return setError("Connect wallet first!");
     if (!selectedProvider) return setError("Select a wallet provider first.");
@@ -454,25 +475,34 @@ function App() {
       startWaiting("dice");
       const tx = await dr.roll(diceGuess, betValue, { value: betValue });
       const receipt = await tx.wait();
-
       const iface = new ethers.Interface(diceABI);
       let rolled = 1, won = false;
       for (const log of receipt.logs) {
         if ((log.address || "").toLowerCase() !== diceAddress.toLowerCase()) continue;
         try { const p = iface.parseLog(log); if (p?.name === "Rolled") { won = Boolean(p.args.won); rolled = Number(p.args.result); break; } } catch {}
       }
+      setDiceRunId((v) => v + 1);
       setUiPhase("reveal"); setOverlay({ game: "dice" });
+      setDiceTransition(false);
       setDiceAngles({ x: 0, y: 0 });
       requestAnimationFrame(() => {
-        const spins = 4 * 360;
-        const o = faceOffsets(rolled);
-        setDiceAngles({ x: spins + o.x, y: spins + o.y });
+        if (diceInnerRef.current) { void diceInnerRef.current.getBoundingClientRect(); }
+        requestAnimationFrame(() => {
+          const spins = 4 * 360;
+          const o = faceOffsets(rolled);
+          setDiceTransition(true);
+          setDiceAngles({ x: spins + o.x, y: spins + o.y });
+        });
       });
       setTimeout(() => { setUiPhase("idle"); setOverlay(null); showModal(won ? "win" : "lose", won ? `You won! Rolled ${rolled}` : `You lost! Rolled ${rolled}`); }, DICE_REVEAL_MS + 150);
-
       await Promise.all([loadDicePending(), loadDiceMeta(), refreshStats()]);
       setError("");
-    } catch (err) { console.error(err); setUiPhase("idle"); setOverlay(null); setError(err?.shortMessage || err?.message || "Transaction failed!"); }
+    } catch (err) {
+      console.error(err);
+      setUiPhase("idle"); setOverlay(null);
+      const msg = (err?.shortMessage || err?.message || "Transaction failed!");
+      setError(msg.includes("InsufficientBank") ? "Bank liquidity too low for this bet. Try a smaller amount." : msg);
+    }
   };
 
   /* Wheel */
@@ -499,6 +529,53 @@ function App() {
       });
     });
   };
+
+  // Robust outcome read: receipt -> queryFilter -> getLastOutcome
+  const readWheelOutcome = async (receipt, wh) => {
+    let idx = null, multX10 = null, won = null;
+    try {
+      const iface = new ethers.Interface(wheelABI);
+      for (const log of receipt.logs) {
+        if ((log.address || "").toLowerCase() !== wheelAddress.toLowerCase()) continue;
+        try {
+          const p = iface.parseLog(log);
+          if (p?.name === "Spun") {
+            idx = Number(p.args.outcomeIndex);
+            multX10 = Number(p.args.multiplierX10);
+            won = Boolean(p.args.won);
+            break;
+          }
+        } catch {}
+      }
+    } catch {}
+    if (idx === null) {
+      try {
+        const events = await wh.queryFilter(wh.filters.Spun(), receipt.blockNumber, receipt.blockNumber);
+        const mine = events.find((e) => e.transactionHash === receipt.hash);
+        if (mine) {
+          idx = Number(mine.args.outcomeIndex);
+          multX10 = Number(mine.args.multiplierX10);
+          won = Boolean(mine.args.won);
+        }
+      } catch {}
+    }
+    if (idx === null) {
+      try {
+        const lo = await wh.getLastOutcome(walletAddress);
+        idx = Number(lo[0]);
+        multX10 = Number(lo[1]);
+        won = Boolean(lo[2]);
+      } catch {}
+    }
+    if (idx === null) {
+      // ultimate fallback: assume lose (should never happen now)
+      idx = 0; multX10 = 0; won = false;
+    }
+    // Normalize: compute won off multiplier to be safe
+    won = multX10 > 0;
+    return { idx, multX10, won };
+  };
+
   const spinWheel = async () => {
     if (!walletAddress) return setError("Connect wallet first!");
     if (!selectedProvider) return setError("Select a wallet provider first.");
@@ -506,32 +583,46 @@ function App() {
     if (!valid) return setError("Enter a valid bet amount.");
     try {
       const browserProv = new ethers.BrowserProvider(selectedProvider);
-      const signer   = await browserProv.getSigner();
-      const wh       = new ethers.Contract(wheelAddress, wheelABI, signer);
+      const signer = await browserProv.getSigner();
+      const wh = new ethers.Contract(wheelAddress, wheelABI, signer);
+
       const betValue = ethers.parseEther(wheelBetAmount);
-      if (betValue < ethers.parseEther(wheelMin) || betValue > ethers.parseEther(wheelMax)) return setError(`Bet must be between ${wheelMin} and ${wheelMax} ZTC`);
+      // Fetch on-chain limits + available bank to avoid reverts
+      const [mn, mx, avail] = await Promise.all([
+        wheelRO.minBet().catch(() => null),
+        wheelRO.maxBet().catch(() => null),
+        wheelRO.availableBank().catch(() => null)
+      ]);
+      if (mn !== null && betValue < mn) return setError(`Bet must be ≥ ${ethers.formatEther(mn)} ZTC`);
+      if (mx !== null && betValue > mx) return setError(`Bet must be ≤ ${ethers.formatEther(mx)} ZTC`);
+      if (avail !== null && avail < (betValue * 10n)) return setError("Bank liquidity too low for this bet. Try a smaller amount.");
+
       startWaiting("wheel");
       const tx = await wh.spin(betValue, { value: betValue });
       const receipt = await tx.wait();
 
-      const iface = new ethers.Interface(wheelABI);
-      let idx = 0, multX10 = 0, won = false;
-      for (const log of receipt.logs) {
-        if ((log.address || "").toLowerCase() !== wheelAddress.toLowerCase()) continue;
-        try { const p = iface.parseLog(log); if (p?.name === "Spun") { idx = Number(p.args.outcomeIndex); multX10 = Number(p.args.multiplierX10); won = Boolean(p.args.won); break; } } catch {}
-      }
-      setUiPhase("idle"); setOverlay(null);
+      const { idx, multX10, won } = await readWheelOutcome(receipt, wh);
+
+      setUiPhase("reveal"); setOverlay(null);
       setWheelLabel("Spinning…");
       spinToIndex(idx);
       setTimeout(() => {
         const label = multX10 > 0 ? `${multX10/10}x` : "Lose";
         setWheelLabel(won ? `You won ${label}!` : `You lost (${label})`);
         showModal(won ? "win" : "lose", won ? `You won ${label}!` : `You lost (${label}).`);
+        setUiPhase("idle");
       }, WHEEL_SPIN_MS + 150);
 
       await Promise.all([loadWheelPending(), loadWheelMeta(), refreshStats()]);
       setError("");
-    } catch (err) { console.error(err); setUiPhase("idle"); setOverlay(null); setError(err?.shortMessage || err?.message || "Transaction failed!"); }
+    } catch (err) {
+      console.error(err);
+      setUiPhase("idle"); setOverlay(null);
+      const msg = (err?.shortMessage || err?.message || "Transaction failed!");
+      if (/InsufficientBank/i.test(msg)) return setError("Bank liquidity too low for this bet. Try a smaller amount.");
+      if (/InvalidBet/i.test(msg)) return setError("Invalid bet. Check min/max and value sent.");
+      setError(msg);
+    }
   };
 
   /* Claim / withdraw-all */
@@ -590,15 +681,18 @@ function App() {
     alert("Saved!");
   };
 
-  /* Totals including pending (Total won = claimed + pending) */
+  /* Totals including pending */
   const totalWonCoinFlip = (Number(cfStats.totalWon)||0) + (Number(cfPending)||0);
   const totalWonDice     = (Number(diceStats.totalWon)||0) + (Number(dicePending)||0);
   const totalWonWheel    = (Number(wheelStats.totalWon)||0) + (Number(wheelPending)||0);
 
-  const bgImage = activePage !== "games" ? "/zenchain-background.jpg" :
-    activeGame === "dice" ? "/dice-background.jpg" :
-    activeGame === "wheel" ? "/wheel-background.jpg" :
-    "/zenchain-background.jpg";
+  // Assets with PUBLIC_URL for subpath hosting
+  const [logoSrc, setLogoSrc] = useState(LOGO_SRC);
+  const baseUrl = (typeof process !== "undefined" && process.env && process.env.PUBLIC_URL) ? process.env.PUBLIC_URL : "";
+  const bgImage = activePage !== "games" ? `${baseUrl}/zenchain-background.jpg` :
+    activeGame === "dice" ? `${baseUrl}/dice-background.jpg` :
+    activeGame === "wheel" ? `${baseUrl}/wheel-background.jpg` :
+    `${baseUrl}/zenchain-background.jpg`;
 
   return (
     <div className="min-h-screen bg-cover bg-center" style={{ backgroundImage: `url('${bgImage}')` }}>
@@ -606,11 +700,15 @@ function App() {
       <div className="header-shell">
         <div className="header flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/zenchain-logo.png" alt="Zenchain Logo" className="h-10 w-10 rounded-lg" />
-            <h2 className="brand">ZenBet</h2>
+            <img
+              src={logoSrc}
+              alt={`${SITE_NAME} Logo`}
+              className="h-10 w-10 rounded-lg"
+              onError={() => setLogoSrc(`${baseUrl}/zenchain-logo.png`)}
+            />
+            <h2 className="brand">{SITE_NAME}</h2>
           </div>
 
-          {/* Keep nav always visible (no header Back) */}
           <div className="flex justify-center flex-grow">
             <button onClick={() => setActiveGame("coinflip")} className={`nav-btn ${activeGame === "coinflip" ? "active" : ""}`}>Coinflip</button>
             <button onClick={() => setActiveGame("dice")} className={`nav-btn ${activeGame === "dice" ? "active" : ""}`}>Dice Roll</button>
@@ -649,8 +747,8 @@ function App() {
             {providers.length === 0 ? (
               <div className="wc-empty">No injected wallets detected. Please install MetaMask, Rabby, Coinbase, or another browser wallet.</div>
             ) : (
-              providers.map((p) => (
-                <button key={(p.rdns || p.name) + Math.random()} className="wc-item" onClick={() => selectProviderAndConnect(p)}>
+              providers.map((p, idx) => (
+                <button key={(p.rdns || p.name || "wallet") + String(idx)} className="wc-item" onClick={() => selectProviderAndConnect(p)}>
                   {p.name}
                 </button>
               ))
@@ -768,7 +866,7 @@ function App() {
           </>
         )}
 
-        {/* Profile page (local only) */}
+        {/* Profile page */}
         {activePage === "profile" && (
           <div className="card p-6 w-full max-w-md mt-2">
             <div className="flex items-center justify-between">
@@ -780,7 +878,7 @@ function App() {
               <div className="label" style={{ marginTop: 12, textAlign: "center" }}>Connect your wallet to edit your profile.</div>
             ) : (
               <>
-                <div className="label" style={{ marginTop: 12 }}>Address: {walletAddress}</div>
+                <div className="label" style={{ marginTop: 12, wordBreak: "break-all" }}>Address: {walletAddress}</div>
 
                 <div className="label" style={{ marginTop: 12 }}>Display name</div>
                 <input className="input" value={profileName} onChange={(e)=>setProfileName(e.target.value)} placeholder="Your name" />
@@ -788,10 +886,6 @@ function App() {
                 <div className="label" style={{ marginTop: 12 }}>Email</div>
                 <input className="input" value={profileEmail} onChange={(e)=>setProfileEmail(e.target.value)} placeholder="name@example.com" />
 
-                <div className="label" style={{ marginTop: 12 }}>Discord</div>
-                <div className="label" style={{ opacity: 0.8 }}>Connecting Discord is coming soon.</div>
-
-                {/* Totals across all games (Total won = claimed + pending) */}
                 <div className="label" style={{ marginTop: 16, opacity: 0.8 }}>Totals (all games)</div>
                 <div className="stat-row">
                   <span className="label">Total bets</span>
@@ -843,10 +937,12 @@ function App() {
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
               <div className="coin3d">
                 <div
+                  key={flipRunId}
+                  ref={coinInnerRef}
                   className="coin3d-inner"
                   style={{
                     transform: `rotateY(${coinAngle}deg)`,
-                    transition: `transform ${COIN_REVEAL_MS}ms cubic-bezier(0.15,0.8,0.2,1)`
+                    transition: coinTransition ? `transform ${COIN_REVEAL_MS}ms cubic-bezier(0.15,0.8,0.2,1)` : "none"
                   }}
                 >
                   <div className="coin-face coin-heads">Heads</div>
@@ -859,10 +955,12 @@ function App() {
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
               <div className="dice-scene">
                 <div
+                  key={diceRunId}
+                  ref={diceInnerRef}
                   className="dice-cube"
                   style={{
                     transform: `rotateX(${diceAngles.x}deg) rotateY(${diceAngles.y}deg)`,
-                    transition: `transform ${DICE_REVEAL_MS}ms cubic-bezier(0.15,0.8,0.2,1)`
+                    transition: diceTransition ? `transform ${DICE_REVEAL_MS}ms cubic-bezier(0.15,0.8,0.2,1)` : "none"
                   }}
                 >
                   <div className="dice-face one">1</div>
@@ -908,8 +1006,6 @@ function App() {
         </div>
         <div className="section">
           <div className="section-title">{activeGame === "coinflip" ? "CoinFlip" : activeGame === "dice" ? "Dice" : "Wheel"}</div>
-
-          {/* No "Total games played" row per your request */}
 
           {activeGame === "coinflip" && (
             <>
