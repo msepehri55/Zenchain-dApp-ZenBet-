@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { ethers } from "ethers";
 
-/* WalletConnect Web3Modal v3 for ethers (added) */
+/* WalletConnect Web3Modal v3 for ethers */
 import {
   createWeb3Modal,
   defaultConfig,
@@ -51,26 +51,26 @@ const __initWeb3Modal = () => {
     defaultChainId: ZENCHAIN_CHAIN.chainId
   });
   if (WC_PROJECT_ID && typeof window !== "undefined" && !window.__ZENBET_W3M__) {
-    createWeb3Modal({
-      ethersConfig: ethersCfg,
-      chains: [ZENCHAIN_CHAIN],
-      projectId: WC_PROJECT_ID,
-      themeMode: "light",
-      themeVariables: {
-        "--w3m-accent": "#22c55e",
-        "--w3m-border-radius-master": "16px"
-      },
-
-      // Ensure Email/Google/Social are hidden
-      enableEmail: false,
-      enableOnramp: false,
-      enableSwaps: false,
-      enableActivity: false,
-      enableAuth: false,
-      features: { email: false, socials: [], onramp: false, swaps: false, activity: false },
-      auth: { email: false, socials: [] }
-    });
-    window.__ZENBET_W3M__ = true;
+    try {
+      createWeb3Modal({
+        ethersConfig: ethersCfg,
+        chains: [ZENCHAIN_CHAIN],
+        projectId: WC_PROJECT_ID,
+        themeMode: "light",
+        themeVariables: {
+          "--w3m-accent": "#22c55e",
+          "--w3m-border-radius-master": "16px"
+        },
+        // Keep supported toggles only (avoids runtime init errors)
+        enableEmail: false,
+        enableOnramp: false,
+        enableSwaps: false,
+        enableActivity: false
+      });
+      window.__ZENBET_W3M__ = true;
+    } catch (e) {
+      console.error("Web3Modal init error:", e);
+    }
   }
 };
 __initWeb3Modal();
@@ -139,7 +139,7 @@ const wheelABI = [
   { inputs: [], name: "owner", outputs: [{ internalType: "address", name: "", type: "address" }], stateMutability: "view", type: "function" },
   { inputs: [{ internalType: "address", name: "", type: "address" }], name: "pendingPrizes", outputs: [{ internalType: "uint256", name: "", type: "uint256" }], stateMutability: "view", type: "function" },
 
-  // Additions for robustness
+  // Optional additions (for future parts)
   { inputs: [], name: "availableBank", outputs: [{ internalType: "uint256", name: "", type: "uint256" }], stateMutability: "view", type: "function" },
   { inputs: [{ internalType: "address", name: "user", type: "address" }], name: "getLastOutcome", outputs: [
       { internalType: "uint8", name: "outcomeIndex", type: "uint8" },
@@ -386,21 +386,33 @@ function App() {
 
       /* Home page */
       .home-hero { max-width: 1100px; width: 100%; }
-      .home-hero-inner { position: relative; overflow: hidden; border-radius: 20px; border: 1px solid var(--zen-border); background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(255,255,255,.9)); box-shadow: 0 14px 28px rgba(0,0,0,.22); padding: 18px; }
+      /* Zenchain-tinted glassmorphism hero */
+      .home-hero-inner { position: relative; overflow: hidden; border-radius: 20px; border: 1px solid rgba(34,197,94,0.35); background:
+        radial-gradient(1200px 700px at -10% -10%, rgba(34,197,94,0.18), rgba(0,0,0,0) 60%),
+        radial-gradient(900px 600px at 110% 110%, rgba(245,158,11,0.16), rgba(0,0,0,0) 60%),
+        linear-gradient(135deg, rgba(255,255,255,0.86), rgba(255,255,255,0.74));
+        box-shadow: 0 20px 44px rgba(0,0,0,.25);
+        padding: 18px; -webkit-backdrop-filter: blur(12px) saturate(1.15); backdrop-filter: blur(12px) saturate(1.15);
+      }
+      .home-hero-inner::after { content:""; position:absolute; inset:0; pointer-events:none;
+        background-image: radial-gradient(circle at 1px 1px, rgba(34,197,94,0.18) 1px, transparent 1.2px);
+        background-size: 22px 22px; opacity: .28; mix-blend-mode: overlay;
+      }
       .home-title { font-size: 38px; font-weight: 900; background: linear-gradient(135deg, #22c55e, #a3e635); -webkit-background-clip:text; background-clip:text; color: transparent; }
       .home-sub { color: #0f172a; font-weight: 700; opacity: .92; }
       .home-cta { display:flex; gap:10px; flex-wrap:wrap; margin-top: 14px; }
 
       .home-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; width: 100%; }
       .home-card { position: relative; border-radius: 18px; overflow: hidden; min-height: 180px; box-shadow: 0 12px 26px rgba(0,0,0,.22); border: 1px solid var(--zen-border); cursor: pointer; }
-      .home-card-bg { position:absolute; inset:0; background-size: cover; background-position: center; filter: brightness(0.75); transform: scale(1.02); }
-      .home-card-overlay { position:absolute; inset:0; background: linear-gradient(160deg, rgba(0,0,0,0.15), rgba(0,0,0,0.45)); }
+      /* darker bg for readability */
+      .home-card-bg { position:absolute; inset:0; background-size: cover; background-position: center; filter: brightness(0.6); transform: scale(1.02); }
+      .home-card-overlay { position:absolute; inset:0; background: linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.38) 40%, rgba(0,0,0,0.65) 100%); backdrop-filter: blur(1.5px); }
       .home-card-content { position: relative; z-index: 2; padding: 14px; color: #fff; }
-      .home-card-title { font-size: 22px; font-weight: 900; text-shadow: 0 3px 10px rgba(0,0,0,.35); }
-      .home-card-desc { margin-top: 6px; font-weight: 700; opacity: .95; }
+      .home-card-title { font-size: 22px; font-weight: 900; text-shadow: 0 2px 16px rgba(0,0,0,.75), 0 0 2px rgba(0,0,0,.6); letter-spacing:.2px; }
+      .home-card-desc { margin-top: 6px; font-weight: 800; opacity: .98; text-shadow: 0 1px 8px rgba(0,0,0,.7); }
       .home-play-btn { margin-top: 10px; background: linear-gradient(135deg,#34d399,#22c55e); color:#0f172a; font-weight:900; border:1px solid rgba(255,255,255,.35); padding:8px 12px; border-radius:10px; }
 
-      .home-card:hover .home-card-bg { filter: brightness(0.85); transform: scale(1.06); transition: transform .35s ease, filter .35s ease; }
+      .home-card:hover .home-card-bg { filter: brightness(0.68); transform: scale(1.06); transition: transform .35s ease, filter .35s ease; }
     `;
     document.head.appendChild(style);
   }, []);
@@ -499,7 +511,7 @@ function App() {
     }
   };
 
-  // open Web3Modal Account (shows Disconnect button) for fixing bug
+  // open Web3Modal Account (shows Disconnect button)
   const disconnectWallet = async () => {
     try {
       await openW3M({ view: "Account" });
@@ -886,15 +898,20 @@ function App() {
       const wh = new ethers.Contract(wheelAddress, wheelABI, signer);
 
       const betValue = ethers.parseEther(wheelBetAmount);
-      // Fetch on-chain limits + available bank to avoid reverts
-      const [mn, mx, avail] = await Promise.all([
-        wheelRO.minBet().catch(() => null),
-        wheelRO.maxBet().catch(() => null),
-        wheelRO.availableBank().catch(() => null)
-      ]);
+
+      // Fetch limits + optional availableBank (if exists)
+      let mn = null, mx = null, avail = null;
+      try { mn = await wheelRO.minBet(); } catch {}
+      try { mx = await wheelRO.maxBet(); } catch {}
+      try {
+        if (wheelRO && typeof wheelRO.availableBank === "function") {
+          avail = await wheelRO.availableBank();
+        }
+      } catch {}
+
       if (mn !== null && betValue < mn) return setError(`Bet must be ≥ ${ethers.formatEther(mn)} ZTC`);
       if (mx !== null && betValue > mx) return setError(`Bet must be ≤ ${ethers.formatEther(mx)} ZTC`);
-      if (avail !== null && avail < betValue * 10n) return setError("Bank liquidity too low for this bet. Try a smaller amount.");
+      if (avail !== null && avail < (betValue * 10n)) return setError("Bank liquidity too low for this bet. Try a smaller amount.");
 
       startWaiting("wheel");
       const tx = await wh.spin(betValue, { value: betValue });
