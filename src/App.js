@@ -2,14 +2,84 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { ethers } from "ethers";
 
+/* WalletConnect Web3Modal v3 for ethers (added) */
+import {
+  createWeb3Modal,
+  defaultConfig,
+  useWeb3Modal,
+  useWeb3ModalAccount,
+  useWeb3ModalProvider
+} from "@web3modal/ethers/react";
+
 /* ===================== Branding ===================== */
 const SITE_NAME = "ZenBet";
-const LOGO_SRC  = "logo.png";
+const LOGO_SRC = "logo.png";
+
+/* homepage intro text */
+const HOME_INTRO = `ZenBet brings fast, fair, and fun on-chain mini‑games to the Zenchain Testnet.
+Flip a coin, roll the dice, or spin the wheel — all provable and transparent. 
+Connect your wallet to play instantly, track your stats, and climb the leaderboard (coming soon).`;
+
+/* ===================== WalletConnect ===================== */
+/* WalletConnect Cloud Project ID */
+const WC_PROJECT_ID = "f51d269bbf90beb6246c10b4e900a00a";
+
+/* Zenchain for Web3Modal (decimal chainId) */
+const ZENCHAIN_CHAIN = {
+  chainId: 8408, // 0x20D8
+  name: "Zenchain Testnet",
+  currency: "ZTC",
+  explorerUrl: "",
+  rpcUrl: "https://zenchain-testnet.api.onfinality.io/public"
+};
+
+/* Web3Modal init */
+const __initWeb3Modal = () => {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const metadata = {
+    name: SITE_NAME,
+    description: "ZenBet - Games on Zenchain Testnet",
+    url: origin,
+    icons: [`${origin}/zenchain-logo.png`]
+  };
+  const ethersCfg = defaultConfig({
+    metadata,
+    enableEIP6963: true,
+    enableInjected: true,
+    enableCoinbase: true,
+    rpcUrl: ZENCHAIN_CHAIN.rpcUrl,
+    defaultChainId: ZENCHAIN_CHAIN.chainId
+  });
+  if (WC_PROJECT_ID && typeof window !== "undefined" && !window.__ZENBET_W3M__) {
+    createWeb3Modal({
+      ethersConfig: ethersCfg,
+      chains: [ZENCHAIN_CHAIN],
+      projectId: WC_PROJECT_ID,
+      themeMode: "light",
+      themeVariables: {
+        "--w3m-accent": "#22c55e",
+        "--w3m-border-radius-master": "16px"
+      },
+
+      // Ensure Email/Google/Social are hidden
+      enableEmail: false,
+      enableOnramp: false,
+      enableSwaps: false,
+      enableActivity: false,
+      enableAuth: false,
+      features: { email: false, socials: [], onramp: false, swaps: false, activity: false },
+      auth: { email: false, socials: [] }
+    });
+    window.__ZENBET_W3M__ = true;
+  }
+};
+__initWeb3Modal();
+/* ===================== end Web3Modal init ===================== */
 
 /* ===================== Addresses ===================== */
 const coinflipAddress = "0x666ab08c1d8dca5d53162118a482fb51244d0e92";
-const diceAddress     = "0x3b5e669589f792f43aad8eb995842dcd7192f430";
-const wheelAddress    = "0x08d8f9b5200e370fd76a1fd184f5dce2e4a86f3b";
+const diceAddress = "0x3b5e669589f792f43aad8eb995842dcd7192f430";
+const wheelAddress = "0x08d8f9b5200e370fd76a1fd184f5dce2e4a86f3b";
 
 /* ===================== ABIs ===================== */
 const coinflipABI = [
@@ -92,9 +162,9 @@ const ZENCHAIN = {
 };
 
 /* Durations */
-const COIN_REVEAL_MS  = 3000;
-const DICE_REVEAL_MS  = 3000;
-const WHEEL_SPIN_MS   = 3800;
+const COIN_REVEAL_MS = 3000;
+const DICE_REVEAL_MS = 3000;
+const WHEEL_SPIN_MS = 3800;
 
 /* Helpers */
 const shortAddr = (addr = "") => (addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : "");
@@ -104,10 +174,12 @@ const formatZTC = (v) => {
     if (Number.isNaN(n)) return "0";
     if (n >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
     return n.toString();
-  } catch { return v; }
+  } catch {
+    return v;
+  }
 };
 
-/* Wallet detection helpers */
+/* Wallet detection helpers (kept) */
 const inferProviderName = (p, fallback = "Injected") => {
   if (!p) return fallback;
   if (p.isRabby) return "Rabby";
@@ -121,15 +193,36 @@ const inferProviderName = (p, fallback = "Injected") => {
 
 /* ===================== Component ===================== */
 function App() {
-  const [activePage, setActivePage] = useState("games");
+  const [activePage, setActivePage] = useState("home");
   const [activeGame, setActiveGame] = useState("coinflip");
 
-  /* Wallet */
+  /* Wallet (original state) */
   const [walletAddress, setWalletAddress] = useState("");
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
+
+  // Original injected wallet chooser (kept)
   const [walletModalOpen, setWalletModalOpen] = useState(false);
-  const [providers, setProviders] = useState([]);
+  const [providers, setProviders] = useState([]); // [{provider, name, rdns}]
   const [selectedProvider, setSelectedProvider] = useState(null);
+
+  /* Web3Modal hooks */
+  const { open: openW3M } = useWeb3Modal();
+  const { address: w3mAddress, isConnected: w3mConnected } = useWeb3ModalAccount();
+  const { walletProvider: w3mProvider } = useWeb3ModalProvider();
+
+  // Sync local state with Web3Modal connection AND disconnection
+  useEffect(() => {
+    if (w3mConnected) {
+      setSelectedProvider(w3mProvider || null);
+      setWalletAddress(w3mAddress || "");
+      setWalletModalOpen(false);
+    } else {
+      // When user disconnects inside Web3Modal Account view, clear local state
+      setSelectedProvider(null);
+      setWalletAddress("");
+      setWalletMenuOpen(false);
+    }
+  }, [w3mConnected, w3mAddress, w3mProvider]);
 
   /* CoinFlip */
   const [cfBetAmount, setCfBetAmount] = useState("");
@@ -186,7 +279,7 @@ function App() {
   const [profileName, setProfileName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
 
-  /* Styles once */
+  /* Styles once (kept + home styles) */
   useEffect(() => {
     if (document.getElementById("zenbet-styles")) return;
     const style = document.createElement("style");
@@ -290,21 +383,49 @@ function App() {
       .wc-item { width:100%; text-align:left; border:1px solid rgba(0,0,0,.08); background:#f8fafc; color:#0f172a; border-radius:10px; padding:10px 12px; font-weight:800; margin:6px 0; }
       .wc-item:hover { background:#eef2ff; }
       .wc-empty { font-size:14px; color:#334155; background:#fff; border:1px dashed rgba(0,0,0,.1); border-radius:10px; padding:10px; }
+
+      /* Home page */
+      .home-hero { max-width: 1100px; width: 100%; }
+      .home-hero-inner { position: relative; overflow: hidden; border-radius: 20px; border: 1px solid var(--zen-border); background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(255,255,255,.9)); box-shadow: 0 14px 28px rgba(0,0,0,.22); padding: 18px; }
+      .home-title { font-size: 38px; font-weight: 900; background: linear-gradient(135deg, #22c55e, #a3e635); -webkit-background-clip:text; background-clip:text; color: transparent; }
+      .home-sub { color: #0f172a; font-weight: 700; opacity: .92; }
+      .home-cta { display:flex; gap:10px; flex-wrap:wrap; margin-top: 14px; }
+
+      .home-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; width: 100%; }
+      .home-card { position: relative; border-radius: 18px; overflow: hidden; min-height: 180px; box-shadow: 0 12px 26px rgba(0,0,0,.22); border: 1px solid var(--zen-border); cursor: pointer; }
+      .home-card-bg { position:absolute; inset:0; background-size: cover; background-position: center; filter: brightness(0.75); transform: scale(1.02); }
+      .home-card-overlay { position:absolute; inset:0; background: linear-gradient(160deg, rgba(0,0,0,0.15), rgba(0,0,0,0.45)); }
+      .home-card-content { position: relative; z-index: 2; padding: 14px; color: #fff; }
+      .home-card-title { font-size: 22px; font-weight: 900; text-shadow: 0 3px 10px rgba(0,0,0,.35); }
+      .home-card-desc { margin-top: 6px; font-weight: 700; opacity: .95; }
+      .home-play-btn { margin-top: 10px; background: linear-gradient(135deg,#34d399,#22c55e); color:#0f172a; font-weight:900; border:1px solid rgba(255,255,255,.35); padding:8px 12px; border-radius:10px; }
+
+      .home-card:hover .home-card-bg { filter: brightness(0.85); transform: scale(1.06); transition: transform .35s ease, filter .35s ease; }
     `;
     document.head.appendChild(style);
   }, []);
 
-  useEffect(() => { document.title = SITE_NAME; }, []);
+  useEffect(() => {
+    document.title = SITE_NAME;
+  }, []);
 
-  const providerRPC = useMemo(() => new ethers.JsonRpcProvider("https://zenchain-testnet.api.onfinality.io/public"), []);
+  const providerRPC = useMemo(
+    () => new ethers.JsonRpcProvider("https://zenchain-testnet.api.onfinality.io/public"),
+    []
+  );
 
-  /* Provider discovery (EIP-6963 + legacy) */
+  /* Provider discovery (EIP-6963 + legacy) — kept intact */
   useEffect(() => {
     const map = new Map();
     const pushProvider = (provider, info = {}) => {
       if (!provider) return;
       const name = info.name || inferProviderName(provider);
-      const key = info.rdns || name + (provider.isMetaMask ? "-mm" : "") + (provider.isRabby ? "-rabby" : "") + (provider.isCoinbaseWallet ? "-cbw" : "");
+      const key =
+        info.rdns ||
+        name +
+          (provider.isMetaMask ? "-mm" : "") +
+          (provider.isRabby ? "-rabby" : "") +
+          (provider.isCoinbaseWallet ? "-cbw" : "");
       if (!map.has(key)) map.set(key, { provider, name, rdns: info.rdns || "" });
     };
     const onAnnounce = (e) => {
@@ -315,32 +436,53 @@ function App() {
       } catch {}
     };
     window.addEventListener("eip6963:announceProvider", onAnnounce);
-    try { window.dispatchEvent(new Event("eip6963:requestProvider")); } catch {}
-    const legacy = window.ethereum?.providers?.length ? window.ethereum.providers : (window.ethereum ? [window.ethereum] : []);
+    try {
+      window.dispatchEvent(new Event("eip6963:requestProvider"));
+    } catch {}
+    const legacy = window.ethereum?.providers?.length
+      ? window.ethereum.providers
+      : window.ethereum
+      ? [window.ethereum]
+      : [];
     legacy.forEach((p) => pushProvider(p));
     setProviders(Array.from(map.values()));
     return () => window.removeEventListener("eip6963:announceProvider", onAnnounce);
   }, []);
 
-  /* Connect helpers */
+  /* Connect helpers (kept) */
   const ensureZenchain = async (prov) => {
     const chainId = await prov.request({ method: "eth_chainId" });
     if (chainId !== ZENCHAIN.chainId) {
       try {
-        await prov.request({ method: "wallet_switchEthereumChain", params: [{ chainId: ZENCHAIN.chainId }] });
+        await prov.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: ZENCHAIN.chainId }]
+        });
       } catch (e) {
         if (e.code === 4902) {
           await prov.request({ method: "wallet_addEthereumChain", params: [ZENCHAIN] });
-        } else { throw e; }
+        } else {
+          throw e;
+        }
       }
     }
   };
 
+  // connect now uses Web3Modal
   const connectWallet = async () => {
-    if (walletAddress) { setWalletMenuOpen((v) => !v); return; }
-    setWalletModalOpen(true);
+    if (walletAddress) {
+      setWalletMenuOpen((v) => !v);
+      return;
+    }
+    try {
+      await openW3M();
+    } catch (e) {
+      console.error(e);
+      setError(e?.message || "Failed to open WalletConnect modal.");
+    }
   };
 
+  // Old injected modal path (kept)
   const selectProviderAndConnect = async (entry) => {
     try {
       const prov = entry?.provider;
@@ -357,13 +499,16 @@ function App() {
     }
   };
 
-  const disconnectWallet = () => {
-    setWalletAddress("");
-    setSelectedProvider(null);
-    setWalletMenuOpen(false);
-    setError("");
+  // open Web3Modal Account (shows Disconnect button) for fixing bug
+  const disconnectWallet = async () => {
+    try {
+      await openW3M({ view: "Account" });
+    } catch (e) {
+      console.warn("Failed to open Account view:", e);
+    }
   };
 
+  // Attach account/chain listeners to selected provider only (kept)
   useEffect(() => {
     if (!selectedProvider || !selectedProvider.on) return;
     const onAccountsChanged = (accs) => setWalletAddress(accs?.[0] || "");
@@ -378,68 +523,167 @@ function App() {
     };
   }, [selectedProvider]);
 
-  /* Meta + pending */
-  const cfRO = useMemo(() => new ethers.Contract(coinflipAddress, coinflipABI, providerRPC), [providerRPC]);
-  const diceRO = useMemo(() => new ethers.Contract(diceAddress, diceABI, providerRPC), [providerRPC]);
-  const wheelRO = useMemo(() => new ethers.Contract(wheelAddress, wheelABI, providerRPC), [providerRPC]);
+  /* Meta + pending (kept) */
+  const cfRO = useMemo(
+    () => new ethers.Contract(coinflipAddress, coinflipABI, providerRPC),
+    [providerRPC]
+  );
+  const diceRO = useMemo(
+    () => new ethers.Contract(diceAddress, diceABI, providerRPC),
+    [providerRPC]
+  );
+  const wheelRO = useMemo(
+    () => new ethers.Contract(wheelAddress, wheelABI, providerRPC),
+    [providerRPC]
+  );
 
-  const loadCFMeta = useCallback(async () => { try { const [b,mn,mx] = await Promise.all([cfRO.getBalance(), cfRO.minBet(), cfRO.maxBet()]); setCfPool(ethers.formatEther(b)); setCfMin(ethers.formatEther(mn)); setCfMax(ethers.formatEther(mx)); } catch {} }, [cfRO]);
-  const loadDiceMeta = useCallback(async () => { try { const [b,mn,mx] = await Promise.all([diceRO.getBalance(), diceRO.minBet(), diceRO.maxBet()]); setDicePool(ethers.formatEther(b)); setDiceMin(ethers.formatEther(mn)); setDiceMax(ethers.formatEther(mx)); } catch {} }, [diceRO]);
-  const loadWheelMeta= useCallback(async () => { try { const [b,mn,mx] = await Promise.all([wheelRO.getBalance(), wheelRO.minBet(), wheelRO.maxBet()]); setWheelPool(ethers.formatEther(b)); setWheelMin(ethers.formatEther(mn)); setWheelMax(ethers.formatEther(mx)); } catch {} }, [wheelRO]);
+  const loadCFMeta = useCallback(async () => {
+    try {
+      const [b, mn, mx] = await Promise.all([
+        cfRO.getBalance(),
+        cfRO.minBet(),
+        cfRO.maxBet()
+      ]);
+      setCfPool(ethers.formatEther(b));
+      setCfMin(ethers.formatEther(mn));
+      setCfMax(ethers.formatEther(mx));
+    } catch {}
+  }, [cfRO]);
+  const loadDiceMeta = useCallback(async () => {
+    try {
+      const [b, mn, mx] = await Promise.all([
+        diceRO.getBalance(),
+        diceRO.minBet(),
+        diceRO.maxBet()
+      ]);
+      setDicePool(ethers.formatEther(b));
+      setDiceMin(ethers.formatEther(mn));
+      setDiceMax(ethers.formatEther(mx));
+    } catch {}
+  }, [diceRO]);
+  const loadWheelMeta = useCallback(async () => {
+    try {
+      const [b, mn, mx] = await Promise.all([
+        wheelRO.getBalance(),
+        wheelRO.minBet(),
+        wheelRO.maxBet()
+      ]);
+      setWheelPool(ethers.formatEther(b));
+      setWheelMin(ethers.formatEther(mn));
+      setWheelMax(ethers.formatEther(mx));
+    } catch {}
+  }, [wheelRO]);
 
-  const loadCFPending   = useCallback(async () => { if (!walletAddress) return; try { setCfPending(ethers.formatEther(await cfRO.pendingPrizes(walletAddress))); } catch {} }, [cfRO, walletAddress]);
-  const loadDicePending = useCallback(async () => { if (!walletAddress) return; try { setDicePending(ethers.formatEther(await diceRO.pendingPrizes(walletAddress))); } catch {} }, [diceRO, walletAddress]);
-  const loadWheelPending= useCallback(async () => { if (!walletAddress) return; try { setWheelPending(ethers.formatEther(await wheelRO.pendingPrizes(walletAddress))); } catch {} }, [wheelRO, walletAddress]);
+  const loadCFPending = useCallback(async () => {
+    if (!walletAddress) return;
+    try {
+      setCfPending(ethers.formatEther(await cfRO.pendingPrizes(walletAddress)));
+    } catch {}
+  }, [cfRO, walletAddress]);
+  const loadDicePending = useCallback(async () => {
+    if (!walletAddress) return;
+    try {
+      setDicePending(ethers.formatEther(await diceRO.pendingPrizes(walletAddress)));
+    } catch {}
+  }, [diceRO, walletAddress]);
+  const loadWheelPending = useCallback(async () => {
+    if (!walletAddress) return;
+    try {
+      setWheelPending(ethers.formatEther(await wheelRO.pendingPrizes(walletAddress)));
+    } catch {}
+  }, [wheelRO, walletAddress]);
 
-  /* Stats */
+  /* Stats (kept) */
   const refreshStats = useCallback(async () => {
     setStatsRefreshing(true);
     try {
       if (walletAddress) {
-        try { const s = await cfRO.getUserStats(walletAddress);    setCfStats({ totalBet: ethers.formatEther(s[0]), totalWon: ethers.formatEther(s[1]), totalLost: ethers.formatEther(s[2]) }); } catch {}
-        try { const s = await diceRO.getUserStats(walletAddress);  setDiceStats({ totalBet: ethers.formatEther(s[0]), totalWon: ethers.formatEther(s[1]), totalLost: ethers.formatEther(s[2]) }); } catch {}
-        try { const s = await wheelRO.getUserStats(walletAddress); setWheelStats({ totalBet: ethers.formatEther(s[0]), totalWon: ethers.formatEther(s[1]), totalLost: ethers.formatEther(s[2]) }); } catch {}
+        try {
+          const s = await cfRO.getUserStats(walletAddress);
+          setCfStats({
+            totalBet: ethers.formatEther(s[0]),
+            totalWon: ethers.formatEther(s[1]),
+            totalLost: ethers.formatEther(s[2])
+          });
+        } catch {}
+        try {
+          const s = await diceRO.getUserStats(walletAddress);
+          setDiceStats({
+            totalBet: ethers.formatEther(s[0]),
+            totalWon: ethers.formatEther(s[1]),
+            totalLost: ethers.formatEther(s[2])
+          });
+        } catch {}
+        try {
+          const s = await wheelRO.getUserStats(walletAddress);
+          setWheelStats({
+            totalBet: ethers.formatEther(s[0]),
+            totalWon: ethers.formatEther(s[1]),
+            totalLost: ethers.formatEther(s[2])
+          });
+        } catch {}
       } else {
         setCfStats({ totalBet: "0", totalWon: "0", totalLost: "0" });
         setDiceStats({ totalBet: "0", totalWon: "0", totalLost: "0" });
         setWheelStats({ totalBet: "0", totalWon: "0", totalLost: "0" });
       }
-    } finally { setStatsRefreshing(false); }
+    } finally {
+      setStatsRefreshing(false);
+    }
   }, [cfRO, diceRO, wheelRO, walletAddress]);
 
-  /* Reveal helpers */
-  const startWaiting = (game) => { setUiPhase("waiting"); setOverlay({ game }); };
+  /* Reveal helpers (kept) */
+  const startWaiting = (game) => {
+    setUiPhase("waiting");
+    setOverlay({ game });
+  };
   const showModal = (status, message) => setModal({ status, message });
 
-  /* Coin Flip */
+  /* Coin Flip (kept) */
   const flipCoin = async () => {
     if (!walletAddress) return setError("Connect wallet first!");
     if (!selectedProvider) return setError("Select a wallet provider first.");
-    const valid = cfBetAmount && Number(cfBetAmount) > 0 && /^\d+(\.\d{1,18})?$/.test(cfBetAmount);
+    const valid =
+      cfBetAmount &&
+      Number(cfBetAmount) > 0 &&
+      /^\d+(\.\d{1,18})?$/.test(cfBetAmount);
     if (!valid) return setError("Enter a valid bet amount.");
     try {
       const browserProv = new ethers.BrowserProvider(selectedProvider);
-      const signer   = await browserProv.getSigner();
-      const cf       = new ethers.Contract(coinflipAddress, coinflipABI, signer);
+      const signer = await browserProv.getSigner();
+      const cf = new ethers.Contract(coinflipAddress, coinflipABI, signer);
       const betValue = ethers.parseEther(cfBetAmount);
-      if (betValue < ethers.parseEther(cfMin) || betValue > ethers.parseEther(cfMax)) return setError(`Bet must be between ${cfMin} and ${cfMax} ZTC`);
+      if (betValue < ethers.parseEther(cfMin) || betValue > ethers.parseEther(cfMax))
+        return setError(`Bet must be between ${cfMin} and ${cfMax} ZTC`);
       startWaiting("coinflip");
       const tx = await cf.flip(cfGuess, betValue, { value: betValue });
       const receipt = await tx.wait();
 
       const iface = new ethers.Interface(coinflipABI);
-      let side = "Heads", won = false;
+      let side = "Heads",
+        won = false;
       for (const log of receipt.logs) {
-        if ((log.address || "").toLowerCase() !== coinflipAddress.toLowerCase()) continue;
-        try { const p = iface.parseLog(log); if (p?.name === "Flipped") { won = Boolean(p.args.won); side = Boolean(p.args.result) ? "Heads" : "Tails"; break; } } catch {}
+        if ((log.address || "").toLowerCase() !== coinflipAddress.toLowerCase())
+          continue;
+        try {
+          const p = iface.parseLog(log);
+          if (p?.name === "Flipped") {
+            won = Boolean(p.args.won);
+            side = Boolean(p.args.result) ? "Heads" : "Tails";
+            break;
+          }
+        } catch {}
       }
 
       setFlipRunId((v) => v + 1);
-      setUiPhase("reveal"); setOverlay({ game: "coinflip" });
+      setUiPhase("reveal");
+      setOverlay({ game: "coinflip" });
       setCoinTransition(false);
       setCoinAngle(0);
       requestAnimationFrame(() => {
-        if (coinInnerRef.current) { void coinInnerRef.current.getBoundingClientRect(); }
+        if (coinInnerRef.current) {
+          void coinInnerRef.current.getBoundingClientRect();
+        }
         requestAnimationFrame(() => {
           const spins = 4 * 360;
           const offset = side === "Heads" ? 0 : 180;
@@ -448,45 +692,82 @@ function App() {
         });
       });
 
-      setTimeout(() => { setUiPhase("idle"); setOverlay(null); showModal(won ? "win" : "lose", won ? `You won! ${side}` : `You lost! ${side}`); }, COIN_REVEAL_MS + 150);
+      setTimeout(() => {
+        setUiPhase("idle");
+        setOverlay(null);
+        showModal(won ? "win" : "lose", won ? `You won! ${side}` : `You lost! ${side}`);
+      }, COIN_REVEAL_MS + 150);
       await Promise.all([loadCFPending(), loadCFMeta(), refreshStats()]);
       setError("");
     } catch (err) {
       console.error(err);
-      setUiPhase("idle"); setOverlay(null);
-      const msg = (err?.shortMessage || err?.message || "Transaction failed!");
+      setUiPhase("idle");
+      setOverlay(null);
+      const msg = err?.shortMessage || err?.message || "Transaction failed!";
       setError(msg.includes("InsufficientBank") ? "Bank liquidity too low for this bet. Try a smaller amount." : msg);
     }
   };
 
-  /* Dice */
-  const faceOffsets = (f) => { switch (f) { case 1: return { x: 0, y: 0 }; case 2: return { x: 0, y: -90 }; case 3: return { x: -90, y: 0 }; case 4: return { x: 90, y: 0 }; case 5: return { x: 0, y: 90 }; case 6: return { x: 0, y: 180 }; default: return { x: 0, y: 0 }; } };
+  /* Dice (kept) */
+  const faceOffsets = (f) => {
+    switch (f) {
+      case 1:
+        return { x: 0, y: 0 };
+      case 2:
+        return { x: 0, y: -90 };
+      case 3:
+        return { x: -90, y: 0 };
+      case 4:
+        return { x: 90, y: 0 };
+      case 5:
+        return { x: 0, y: 90 };
+      case 6:
+        return { x: 0, y: 180 };
+      default:
+        return { x: 0, y: 0 };
+    }
+  };
   const rollDice = async () => {
     if (!walletAddress) return setError("Connect wallet first!");
     if (!selectedProvider) return setError("Select a wallet provider first.");
-    const valid = diceBetAmount && Number(diceBetAmount) > 0 && /^\d+(\.\d{1,18})?$/.test(diceBetAmount);
+    const valid =
+      diceBetAmount &&
+      Number(diceBetAmount) > 0 &&
+      /^\d+(\.\d{1,18})?$/.test(diceBetAmount);
     if (!valid) return setError("Enter a valid bet amount.");
     try {
       const browserProv = new ethers.BrowserProvider(selectedProvider);
-      const signer   = await browserProv.getSigner();
-      const dr       = new ethers.Contract(diceAddress, diceABI, signer);
+      const signer = await browserProv.getSigner();
+      const dr = new ethers.Contract(diceAddress, diceABI, signer);
       const betValue = ethers.parseEther(diceBetAmount);
-      if (betValue < ethers.parseEther(diceMin) || betValue > ethers.parseEther(diceMax)) return setError(`Bet must be between ${diceMin} and ${diceMax} ZTC`);
+      if (betValue < ethers.parseEther(diceMin) || betValue > ethers.parseEther(diceMax))
+        return setError(`Bet must be between ${diceMin} and ${diceMax} ZTC`);
       startWaiting("dice");
       const tx = await dr.roll(diceGuess, betValue, { value: betValue });
       const receipt = await tx.wait();
       const iface = new ethers.Interface(diceABI);
-      let rolled = 1, won = false;
+      let rolled = 1,
+        won = false;
       for (const log of receipt.logs) {
         if ((log.address || "").toLowerCase() !== diceAddress.toLowerCase()) continue;
-        try { const p = iface.parseLog(log); if (p?.name === "Rolled") { won = Boolean(p.args.won); rolled = Number(p.args.result); break; } } catch {}
+        try {
+          const p = iface.parseLog(log);
+          if (p?.name === "Rolled") {
+            won = Boolean(p.args.won);
+            rolled = Number(p.args.result);
+            break;
+          }
+        } catch {}
       }
       setDiceRunId((v) => v + 1);
-      setUiPhase("reveal"); setOverlay({ game: "dice" });
+      setUiPhase("reveal");
+      setOverlay({ game: "dice" });
       setDiceTransition(false);
       setDiceAngles({ x: 0, y: 0 });
       requestAnimationFrame(() => {
-        if (diceInnerRef.current) { void diceInnerRef.current.getBoundingClientRect(); }
+        if (diceInnerRef.current) {
+          void diceInnerRef.current.getBoundingClientRect();
+        }
         requestAnimationFrame(() => {
           const spins = 4 * 360;
           const o = faceOffsets(rolled);
@@ -494,25 +775,38 @@ function App() {
           setDiceAngles({ x: spins + o.x, y: spins + o.y });
         });
       });
-      setTimeout(() => { setUiPhase("idle"); setOverlay(null); showModal(won ? "win" : "lose", won ? `You won! Rolled ${rolled}` : `You lost! Rolled ${rolled}`); }, DICE_REVEAL_MS + 150);
+      setTimeout(() => {
+        setUiPhase("idle");
+        setOverlay(null);
+        showModal(
+          won ? "win" : "lose",
+          won ? `You won! Rolled ${rolled}` : `You lost! Rolled ${rolled}`
+        );
+      }, DICE_REVEAL_MS + 150);
       await Promise.all([loadDicePending(), loadDiceMeta(), refreshStats()]);
       setError("");
     } catch (err) {
       console.error(err);
-      setUiPhase("idle"); setOverlay(null);
-      const msg = (err?.shortMessage || err?.message || "Transaction failed!");
+      setUiPhase("idle");
+      setOverlay(null);
+      const msg = err?.shortMessage || err?.message || "Transaction failed!";
       setError(msg.includes("InsufficientBank") ? "Bank liquidity too low for this bet. Try a smaller amount." : msg);
     }
   };
 
-  /* Wheel */
+  /* Wheel (kept) */
   const wheelGradient = useMemo(() => {
-    const colors = ["#fecaca","#fee2e2","#fde68a","#bbf7d0","#86efac","#67e8f9","#a5b4fc"];
-    const n = WHEEL_SEGMENTS.length, step = 100 / n;
-    return `conic-gradient(${Array.from({length:n}).map((_,i)=>`${colors[i%colors.length]} ${i*step}% ${(i+1)*step}%`).join(",")})`;
+    const colors = ["#fecaca", "#fee2e2", "#fde68a", "#bbf7d0", "#86efac", "#67e8f9", "#a5b4fc"];
+    const n = WHEEL_SEGMENTS.length,
+      step = 100 / n;
+    return `conic-gradient(${Array.from({ length: n })
+      .map((_, i) => `${colors[i % colors.length]} ${i * step}% ${(i + 1) * step}%`)
+      .join(",")})`;
   }, [WHEEL_SEGMENTS.length]);
   const labelTransform = (i) => {
-    const n = WHEEL_SEGMENTS.length, base = 360 / n, angle = (i + 0.5) * base;
+    const n = WHEEL_SEGMENTS.length,
+      base = 360 / n,
+      angle = (i + 0.5) * base;
     return `translate(-50%,-50%) rotate(${angle}deg) translate(0, -130px) rotate(${-angle}deg)`;
   };
   const spinToIndex = (idx) => {
@@ -521,7 +815,7 @@ function App() {
     const stopAt = 360 - (idx + 0.5) * base;
     const target = 4 * 360 + stopAt;
     setWheelAnimate(false);
-    setWheelRotation((prev) => (prev % 360));
+    setWheelRotation((prev) => prev % 360);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         setWheelAnimate(true);
@@ -532,7 +826,9 @@ function App() {
 
   // Robust outcome read: receipt -> queryFilter -> getLastOutcome
   const readWheelOutcome = async (receipt, wh) => {
-    let idx = null, multX10 = null, won = null;
+    let idx = null,
+      multX10 = null,
+      won = null;
     try {
       const iface = new ethers.Interface(wheelABI);
       for (const log of receipt.logs) {
@@ -568,10 +864,10 @@ function App() {
       } catch {}
     }
     if (idx === null) {
-      // ultimate fallback: assume lose (should never happen now)
-      idx = 0; multX10 = 0; won = false;
+      idx = 0;
+      multX10 = 0;
+      won = false;
     }
-    // Normalize: compute won off multiplier to be safe
     won = multX10 > 0;
     return { idx, multX10, won };
   };
@@ -579,7 +875,10 @@ function App() {
   const spinWheel = async () => {
     if (!walletAddress) return setError("Connect wallet first!");
     if (!selectedProvider) return setError("Select a wallet provider first.");
-    const valid = wheelBetAmount && Number(wheelBetAmount) > 0 && /^\d+(\.\d{1,18})?$/.test(wheelBetAmount);
+    const valid =
+      wheelBetAmount &&
+      Number(wheelBetAmount) > 0 &&
+      /^\d+(\.\d{1,18})?$/.test(wheelBetAmount);
     if (!valid) return setError("Enter a valid bet amount.");
     try {
       const browserProv = new ethers.BrowserProvider(selectedProvider);
@@ -595,7 +894,7 @@ function App() {
       ]);
       if (mn !== null && betValue < mn) return setError(`Bet must be ≥ ${ethers.formatEther(mn)} ZTC`);
       if (mx !== null && betValue > mx) return setError(`Bet must be ≤ ${ethers.formatEther(mx)} ZTC`);
-      if (avail !== null && avail < (betValue * 10n)) return setError("Bank liquidity too low for this bet. Try a smaller amount.");
+      if (avail !== null && avail < betValue * 10n) return setError("Bank liquidity too low for this bet. Try a smaller amount.");
 
       startWaiting("wheel");
       const tx = await wh.spin(betValue, { value: betValue });
@@ -603,11 +902,12 @@ function App() {
 
       const { idx, multX10, won } = await readWheelOutcome(receipt, wh);
 
-      setUiPhase("reveal"); setOverlay(null);
+      setUiPhase("reveal");
+      setOverlay(null);
       setWheelLabel("Spinning…");
       spinToIndex(idx);
       setTimeout(() => {
-        const label = multX10 > 0 ? `${multX10/10}x` : "Lose";
+        const label = multX10 > 0 ? `${multX10 / 10}x` : "Lose";
         setWheelLabel(won ? `You won ${label}!` : `You lost (${label})`);
         showModal(won ? "win" : "lose", won ? `You won ${label}!` : `You lost (${label}).`);
         setUiPhase("idle");
@@ -617,63 +917,152 @@ function App() {
       setError("");
     } catch (err) {
       console.error(err);
-      setUiPhase("idle"); setOverlay(null);
-      const msg = (err?.shortMessage || err?.message || "Transaction failed!");
+      setUiPhase("idle");
+      setOverlay(null);
+      const msg = err?.shortMessage || err?.message || "Transaction failed!";
       if (/InsufficientBank/i.test(msg)) return setError("Bank liquidity too low for this bet. Try a smaller amount.");
       if (/InvalidBet/i.test(msg)) return setError("Invalid bet. Check min/max and value sent.");
       setError(msg);
     }
   };
 
-  /* Claim / withdraw-all */
-  const claimPrizeCF    = async () => { if (!walletAddress) return setError("Connect wallet first!"); try { const p=new ethers.BrowserProvider(selectedProvider || window.ethereum); const s=await p.getSigner(); const cf=new ethers.Contract(coinflipAddress,coinflipABI,s); const tx=await cf.claimPrize(); await tx.wait(); await Promise.all([loadCFPending(),loadCFMeta(),refreshStats()]); } catch(e){ setError(e?.shortMessage||e?.message||"Failed to claim (CoinFlip)."); } };
-  const claimPrizeDice  = async () => { if (!walletAddress) return; try { const p=new ethers.BrowserProvider(selectedProvider || window.ethereum); const s=await p.getSigner(); const dr=new ethers.Contract(diceAddress,diceABI,s); const tx=await dr.claimPrize(); await tx.wait(); await Promise.all([loadDicePending(),loadDiceMeta(),refreshStats()]); } catch(e){ setError(e?.shortMessage||e?.message||"Failed to claim (Dice)."); } };
-  const claimPrizeWheel = async () => { if (!walletAddress) return; try { const p=new ethers.BrowserProvider(selectedProvider || window.ethereum); const s=await p.getSigner(); const wh=new ethers.Contract(wheelAddress,wheelABI,s); const tx=await wh.claimPrize(); await tx.wait(); await Promise.all([loadWheelPending(),loadWheelMeta(),refreshStats()]); } catch(e){ setError(e?.shortMessage||e?.message||"Failed to claim (Wheel)."); } };
+  /* Claim / withdraw-all (kept) */
+  const claimPrizeCF = async () => {
+    if (!walletAddress) return setError("Connect wallet first!");
+    try {
+      const p = new ethers.BrowserProvider(selectedProvider || window.ethereum);
+      const s = await p.getSigner();
+      const cf = new ethers.Contract(coinflipAddress, coinflipABI, s);
+      const tx = await cf.claimPrize();
+      await tx.wait();
+      await Promise.all([loadCFPending(), loadCFMeta(), refreshStats()]);
+    } catch (e) {
+      setError(e?.shortMessage || e?.message || "Failed to claim (CoinFlip).");
+    }
+  };
+  const claimPrizeDice = async () => {
+    if (!walletAddress) return;
+    try {
+      const p = new ethers.BrowserProvider(selectedProvider || window.ethereum);
+      const s = await p.getSigner();
+      const dr = new ethers.Contract(diceAddress, diceABI, s);
+      const tx = await dr.claimPrize();
+      await tx.wait();
+      await Promise.all([loadDicePending(), loadDiceMeta(), refreshStats()]);
+    } catch (e) {
+      setError(e?.shortMessage || e?.message || "Failed to claim (Dice).");
+    }
+  };
+  const claimPrizeWheel = async () => {
+    if (!walletAddress) return;
+    try {
+      const p = new ethers.BrowserProvider(selectedProvider || window.ethereum);
+      const s = await p.getSigner();
+      const wh = new ethers.Contract(wheelAddress, wheelABI, s);
+      const tx = await wh.claimPrize();
+      await tx.wait();
+      await Promise.all([loadWheelPending(), loadWheelMeta(), refreshStats()]);
+    } catch (e) {
+      setError(e?.shortMessage || e?.message || "Failed to claim (Wheel).");
+    }
+  };
   const withdrawAll = async () => {
     if (!walletAddress) return setError("Connect wallet first!");
     try {
-      const p=new ethers.BrowserProvider(selectedProvider || window.ethereum); const s=await p.getSigner();
-      let did=false;
-      if (parseFloat(cfPending)>0){ try{ const cf=new ethers.Contract(coinflipAddress,coinflipABI,s); const tx=await cf.claimPrize(); await tx.wait(); did=true; }catch{} }
-      if (parseFloat(dicePending)>0){ try{ const dr=new ethers.Contract(diceAddress,diceABI,s); const tx=await dr.claimPrize(); await tx.wait(); did=true; }catch{} }
-      if (parseFloat(wheelPending)>0){ try{ const wh=new ethers.Contract(wheelAddress,wheelABI,s); const tx=await wh.claimPrize(); await tx.wait(); did=true; }catch{} }
+      const p = new ethers.BrowserProvider(selectedProvider || window.ethereum);
+      const s = await p.getSigner();
+      let did = false;
+      if (parseFloat(cfPending) > 0) {
+        try {
+          const cf = new ethers.Contract(coinflipAddress, coinflipABI, s);
+          const tx = await cf.claimPrize();
+          await tx.wait();
+          did = true;
+        } catch {}
+      }
+      if (parseFloat(dicePending) > 0) {
+        try {
+          const dr = new ethers.Contract(diceAddress, diceABI, s);
+          const tx = await dr.claimPrize();
+          await tx.wait();
+          did = true;
+        } catch {}
+      }
+      if (parseFloat(wheelPending) > 0) {
+        try {
+          const wh = new ethers.Contract(wheelAddress, wheelABI, s);
+          const tx = await wh.claimPrize();
+          await tx.wait();
+          did = true;
+        } catch {}
+      }
       if (!did) setError("No unclaimed rewards.");
-      await Promise.all([loadCFPending(),loadDicePending(),loadWheelPending(),loadCFMeta(),loadDiceMeta(),loadWheelMeta(),refreshStats()]);
-    } catch(e){ setError(e?.shortMessage||e?.message||"Withdraw all failed."); }
+      await Promise.all([
+        loadCFPending(),
+        loadDicePending(),
+        loadWheelPending(),
+        loadCFMeta(),
+        loadDiceMeta(),
+        loadWheelMeta(),
+        refreshStats()
+      ]);
+    } catch (e) {
+      setError(e?.shortMessage || e?.message || "Withdraw all failed.");
+    }
   };
 
-  /* Init & events */
-  useEffect(() => { loadCFMeta(); loadDiceMeta(); loadWheelMeta(); }, [loadCFMeta, loadDiceMeta, loadWheelMeta]);
+  /* Init & events (kept) */
   useEffect(() => {
-    if (walletAddress) { loadCFPending(); loadDicePending(); loadWheelPending(); }
-    else { setCfPending("0"); setDicePending("0"); setWheelPending("0"); }
+    loadCFMeta();
+    loadDiceMeta();
+    loadWheelMeta();
+  }, [loadCFMeta, loadDiceMeta, loadWheelMeta]);
+  useEffect(() => {
+    if (walletAddress) {
+      loadCFPending();
+      loadDicePending();
+      loadWheelPending();
+    } else {
+      setCfPending("0");
+      setDicePending("0");
+      setWheelPending("0");
+    }
     refreshStats();
   }, [walletAddress, loadCFPending, loadDicePending, loadWheelPending, refreshStats]);
 
-  /* Outside click closers */
+  /* Outside click closers (kept) */
   const walletMenuRef = useRef(null);
   useEffect(() => {
-    const onDown = (e) => { if (walletMenuRef.current && !walletMenuRef.current.contains(e.target)) setWalletMenuOpen(false); };
+    const onDown = (e) => {
+      if (walletMenuRef.current && !walletMenuRef.current.contains(e.target))
+        setWalletMenuOpen(false);
+    };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, []);
   const statsRef = useRef(null);
   useEffect(() => {
     if (!statsOpen) return;
-    const onDown = (e) => { if (statsRef.current && !statsRef.current.contains(e.target)) setStatsOpen(false); };
+    const onDown = (e) => {
+      if (statsRef.current && !statsRef.current.contains(e.target)) setStatsOpen(false);
+    };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [statsOpen]);
 
-  /* Profile local load/save */
+  /* Profile local load/save (kept) */
   useEffect(() => {
     if (activePage !== "profile") return;
     const key = `zenbet_profile_${walletAddress || "anon"}`;
     const saved = localStorage.getItem(key);
     if (saved) {
       const d = JSON.parse(saved);
-      setProfileName(d.name || ""); setProfileEmail(d.email || "");
-    } else { setProfileName(""); setProfileEmail(""); }
+      setProfileName(d.name || "");
+      setProfileEmail(d.email || "");
+    } else {
+      setProfileName("");
+      setProfileEmail("");
+    }
   }, [activePage, walletAddress]);
   const saveProfile = () => {
     const key = `zenbet_profile_${walletAddress || "anon"}`;
@@ -681,25 +1070,53 @@ function App() {
     alert("Saved!");
   };
 
-  /* Totals including pending */
-  const totalWonCoinFlip = (Number(cfStats.totalWon)||0) + (Number(cfPending)||0);
-  const totalWonDice     = (Number(diceStats.totalWon)||0) + (Number(dicePending)||0);
-  const totalWonWheel    = (Number(wheelStats.totalWon)||0) + (Number(wheelPending)||0);
+  /* Totals including pending (kept) */
+  const totalWonCoinFlip = (Number(cfStats.totalWon) || 0) + (Number(cfPending) || 0);
+  const totalWonDice = (Number(diceStats.totalWon) || 0) + (Number(dicePending) || 0);
+  const totalWonWheel = (Number(wheelStats.totalWon) || 0) + (Number(wheelPending) || 0);
 
-  // Assets with PUBLIC_URL for subpath hosting
+  // Assets with PUBLIC_URL for subpath hosting (updated for home bg)
   const [logoSrc, setLogoSrc] = useState(LOGO_SRC);
-  const baseUrl = (typeof process !== "undefined" && process.env && process.env.PUBLIC_URL) ? process.env.PUBLIC_URL : "";
-  const bgImage = activePage !== "games" ? `${baseUrl}/zenchain-background.jpg` :
-    activeGame === "dice" ? `${baseUrl}/dice-background.jpg` :
-    activeGame === "wheel" ? `${baseUrl}/wheel-background.jpg` :
-    `${baseUrl}/zenchain-background.jpg`;
+  const baseUrl =
+    typeof process !== "undefined" && process.env && process.env.PUBLIC_URL
+      ? process.env.PUBLIC_URL
+      : "";
+
+  // Background per page
+  const bgImage =
+    activePage === "home"
+      ? `${baseUrl}/home-background.jpg`
+      : activePage !== "games"
+      ? `${baseUrl}/zenchain-background.jpg`
+      : activeGame === "dice"
+      ? `${baseUrl}/dice-background.jpg`
+      : activeGame === "wheel"
+      ? `${baseUrl}/wheel-background.jpg`
+      : `${baseUrl}/zenchain-background.jpg`;
+
+  // Home card backgrounds
+  const homeCardBGs = {
+    coinflip: `${baseUrl}/coinflip-background.jpg`,
+    dice: `${baseUrl}/dice-background.jpg`,
+    wheel: `${baseUrl}/wheel-background.jpg`
+  };
+
+  const goToGame = (game) => {
+    setActiveGame(game);
+    setActivePage("games");
+    setStatsOpen(false);
+  };
 
   return (
     <div className="min-h-screen bg-cover bg-center" style={{ backgroundImage: `url('${bgImage}')` }}>
       {/* Header */}
       <div className="header-shell">
         <div className="header flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div
+            className="flex items-center gap-3"
+            style={{ cursor: "pointer" }}
+            onClick={() => setActivePage("home")}
+          >
             <img
               src={logoSrc}
               alt={`${SITE_NAME} Logo`}
@@ -710,21 +1127,47 @@ function App() {
           </div>
 
           <div className="flex justify-center flex-grow">
-            <button onClick={() => setActiveGame("coinflip")} className={`nav-btn ${activeGame === "coinflip" ? "active" : ""}`}>Coinflip</button>
-            <button onClick={() => setActiveGame("dice")} className={`nav-btn ${activeGame === "dice" ? "active" : ""}`}>Dice Roll</button>
-            <button onClick={() => setActiveGame("wheel")} className={`nav-btn ${activeGame === "wheel" ? "active" : ""}`}>Wheel</button>
-            <button onClick={() => setActiveGame("coming")} className={`nav-btn ${activeGame === "coming" ? "active" : ""}`}>Coming Soon</button>
+            <button
+              onClick={() => goToGame("coinflip")}
+              className={`nav-btn ${activeGame === "coinflip" && activePage === "games" ? "active" : ""}`}
+            >
+              Coinflip
+            </button>
+            <button
+              onClick={() => goToGame("dice")}
+              className={`nav-btn ${activeGame === "dice" && activePage === "games" ? "active" : ""}`}
+            >
+              Dice Roll
+            </button>
+            <button
+              onClick={() => goToGame("wheel")}
+              className={`nav-btn ${activeGame === "wheel" && activePage === "games" ? "active" : ""}`}
+            >
+              Wheel
+            </button>
+            <button
+              onClick={() => goToGame("coming")}
+              className={`nav-btn ${activeGame === "coming" && activePage === "games" ? "active" : ""}`}
+            >
+              Coming Soon
+            </button>
           </div>
 
           <div className="flex items-center" ref={walletMenuRef}>
-            <button className="link-btn" onClick={() => setActivePage("profile")}>Profile</button>
+            <button className="link-btn" onClick={() => setActivePage("profile")}>
+              Profile
+            </button>
             <button className="wallet-btn" onClick={connectWallet}>
               {walletAddress ? shortAddr(walletAddress) : "Connect Wallet"}
             </button>
             {walletAddress && walletMenuOpen && (
               <div className="wallet-menu">
-                <div className="label" style={{ padding: "8px 10px", opacity: 0.8 }}>Connected: {shortAddr(walletAddress)}</div>
-                <button className="danger" onClick={disconnectWallet}>Disconnect Wallet</button>
+                <div className="label" style={{ padding: "8px 10px", opacity: 0.8 }}>
+                  Connected: {shortAddr(walletAddress)}
+                </div>
+                <button className="danger" onClick={disconnectWallet}>
+                  Disconnect Wallet
+                </button>
               </div>
             )}
           </div>
@@ -734,32 +1177,106 @@ function App() {
       {/* Left handles */}
       {activePage === "games" && !statsOpen && (
         <>
-          <button className="handle stats-handle" onClick={() => setStatsOpen(true)} aria-label="Open stats">📊 Stats</button>
-          <button className="handle leaderboard-handle" onClick={() => alert("Leaderboard coming soon")} aria-label="Open leaderboard">🏆 Leaderboard</button>
+          <button className="handle stats-handle" onClick={() => setStatsOpen(true)} aria-label="Open stats">
+            📊 Stats
+          </button>
+          <button className="handle leaderboard-handle" onClick={() => alert("Leaderboard coming soon")} aria-label="Open leaderboard">
+            🏆 Leaderboard
+          </button>
         </>
       )}
 
-      {/* Wallet chooser modal */}
+      {/* Wallet chooser modal (kept) */}
       {walletModalOpen && (
         <div className="wc-overlay" onClick={() => setWalletModalOpen(false)}>
           <div className="wc-modal" onClick={(e) => e.stopPropagation()}>
             <div className="wc-title">Choose a wallet</div>
             {providers.length === 0 ? (
-              <div className="wc-empty">No injected wallets detected. Please install MetaMask, Rabby, Coinbase, or another browser wallet.</div>
+              <div className="wc-empty">
+                No injected wallets detected. Please install MetaMask, Rabby, Coinbase, or another browser wallet.
+              </div>
             ) : (
               providers.map((p, idx) => (
-                <button key={(p.rdns || p.name || "wallet") + String(idx)} className="wc-item" onClick={() => selectProviderAndConnect(p)}>
+                <button
+                  key={(p.rdns || p.name || "wallet") + String(idx)}
+                  className="wc-item"
+                  onClick={() => selectProviderAndConnect(p)}
+                >
                   {p.name}
                 </button>
               ))
             )}
-            <button className="link-btn" style={{ width: "100%", marginTop: 8 }} onClick={() => setWalletModalOpen(false)}>Cancel</button>
+            <button className="link-btn" style={{ width: "100%", marginTop: 8 }} onClick={() => setWalletModalOpen(false)}>
+              Cancel
+            </button>
           </div>
         </div>
       )}
 
       {/* Main content */}
       <div className="pt-28 flex flex-col items-center justify-center p-4">
+        {/* Home page */}
+        {activePage === "home" && (
+          <div className="home-hero">
+            <div className="home-hero-inner">
+              <div className="home-title">Welcome to {SITE_NAME}</div>
+              <div className="home-sub" style={{ marginTop: 6, whiteSpace: "pre-line" }}>
+                {HOME_INTRO}
+              </div>
+              <div className="home-cta">
+                <button className="wallet-btn" onClick={connectWallet}>
+                  {walletAddress ? `Connected: ${shortAddr(walletAddress)}` : "Connect Wallet"}
+                </button>
+                <button className="link-btn" onClick={() => goToGame("coinflip")}>
+                  Play Coinflip
+                </button>
+                <button className="link-btn" onClick={() => goToGame("dice")}>
+                  Play Dice
+                </button>
+                <button className="link-btn" onClick={() => goToGame("wheel")}>
+                  Play Wheel
+                </button>
+              </div>
+            </div>
+
+            <div className="home-grid">
+              {/* Coinflip card */}
+              <div className="home-card" onClick={() => goToGame("coinflip")} role="button" aria-label="Play Coinflip">
+                <div className="home-card-bg" style={{ backgroundImage: `url('${homeCardBGs.coinflip}')` }} />
+                <div className="home-card-overlay" />
+                <div className="home-card-content">
+                  <div className="home-card-title">🪙 Coinflip</div>
+                  <div className="home-card-desc">Pick heads or tails and try your luck.</div>
+                  <button className="home-play-btn">Play</button>
+                </div>
+              </div>
+
+              {/* Dice card */}
+              <div className="home-card" onClick={() => goToGame("dice")} role="button" aria-label="Play Dice">
+                <div className="home-card-bg" style={{ backgroundImage: `url('${homeCardBGs.dice}')` }} />
+                <div className="home-card-overlay" />
+                <div className="home-card-content">
+                  <div className="home-card-title">🎲 Dice</div>
+                  <div className="home-card-desc">Choose a number 1–6 and roll on-chain.</div>
+                  <button className="home-play-btn">Play</button>
+                </div>
+              </div>
+
+              {/* Wheel card */}
+              <div className="home-card" onClick={() => goToGame("wheel")} role="button" aria-label="Play Wheel">
+                <div className="home-card-bg" style={{ backgroundImage: `url('${homeCardBGs.wheel}')` }} />
+                <div className="home-card-overlay" />
+                <div className="home-card-content">
+                  <div className="home-card-title">🎡 Wheel</div>
+                  <div className="home-card-desc">Spin to win up to 10x. Big thrills!</div>
+                  <button className="home-play-btn">Play</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Games page (kept) */}
         {activePage === "games" && (
           <>
             {/* CoinFlip */}
@@ -770,51 +1287,158 @@ function App() {
                   {walletAddress ? `Connected: ${shortAddr(walletAddress)}` : "Connect Wallet"}
                 </button>
                 <div className="text-center mb-6">
-                  <p className="text-lg label">Prize Pool: <span className="value">{formatZTC(cfPool)} ZTC</span></p>
-                  <p className="text-lg label">Your Pending Prize: <span className="value">{formatZTC(cfPending)} ZTC</span></p>
-                  {parseFloat(cfPending) > 0 && <button onClick={claimPrizeCF} className="wallet-btn mt-3">Claim Prize</button>}
+                  <p className="text-lg label">
+                    Prize Pool: <span className="value">{formatZTC(cfPool)} ZTC</span>
+                  </p>
+                  <p className="text-lg label">
+                    Your Pending Prize: <span className="value">{formatZTC(cfPending)} ZTC</span>
+                  </p>
+                  {parseFloat(cfPending) > 0 && (
+                    <button onClick={claimPrizeCF} className="wallet-btn mt-3">
+                      Claim Prize
+                    </button>
+                  )}
                 </div>
                 <div className="mb-6">
                   <h3 className="text-xl font-extrabold text-center title-gradient">Place Your Bet</h3>
-                  <p className="text-center text-sm label">Min Bet: {cfMin} ZTC | Max Bet: {cfMax} ZTC</p>
-                  <input type="number" step="0.000000000000000001" placeholder="Bet Amount (ZTC)" value={cfBetAmount} onChange={(e) => setCfBetAmount(e.target.value)} className="input mt-2" />
+                  <p className="text-center text-sm label">
+                    Min Bet: {cfMin} ZTC | Max Bet: {cfMax} ZTC
+                  </p>
+                  <input
+                    type="number"
+                    step="0.000000000000000001"
+                    placeholder="Bet Amount (ZTC)"
+                    value={cfBetAmount}
+                    onChange={(e) => setCfBetAmount(e.target.value)}
+                    className="input mt-2"
+                  />
                   <div className="flex justify-center gap-8 mt-4">
-                    <label className="flex items-center gap-2"><input type="radio" checked={cfGuess} onChange={() => setCfGuess(true)} className="accent-emerald-500" />Heads</label>
-                    <label className="flex items-center gap-2"><input type="radio" checked={!cfGuess} onChange={() => setCfGuess(false)} className="accent-emerald-500" />Tails</label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        checked={cfGuess}
+                        onChange={() => setCfGuess(true)}
+                        className="accent-emerald-500"
+                      />
+                      Heads
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        checked={!cfGuess}
+                        onChange={() => setCfGuess(false)}
+                        className="accent-emerald-500"
+                      />
+                      Tails
+                    </label>
                   </div>
                 </div>
-                <button onClick={flipCoin} className={`btn-green ${uiPhase !== "idle" ? "btn-disabled" : ""}`} disabled={uiPhase !== "idle"}>Flip Coin!</button>
+                <button
+                  onClick={flipCoin}
+                  className={`btn-green ${uiPhase !== "idle" ? "btn-disabled" : ""}`}
+                  disabled={uiPhase !== "idle"}
+                >
+                  Flip Coin!
+                </button>
               </div>
             )}
 
             {/* Dice */}
             {activeGame === "dice" && (
               <div className="card p-6 w-full max-w-md mt-2 border-2 border-white/10">
-                <h1 className="text-4xl font-extrabold text-center" style={{ background: "linear-gradient(135deg,#60a5fa,#0ea5e9)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>Dice</h1>
+                <h1
+                  className="text-4xl font-extrabold text-center"
+                  style={{
+                    background: "linear-gradient(135deg,#60a5fa,#0ea5e9)",
+                    WebkitBackgroundClip: "text",
+                    backgroundClip: "text",
+                    color: "transparent"
+                  }}
+                >
+                  Dice
+                </h1>
                 <button onClick={connectWallet} className="wallet-btn w-full mb-6">
                   {walletAddress ? `Connected: ${shortAddr(walletAddress)}` : "Connect Wallet"}
                 </button>
                 <div className="text-center mb-6">
-                  <p className="text-lg label">Prize Pool: <span className="value">{formatZTC(dicePool)} ZTC</span></p>
-                  <p className="text-lg label">Your Pending Prize: <span className="value">{formatZTC(dicePending)} ZTC</span></p>
-                  {parseFloat(dicePending) > 0 && <button onClick={claimPrizeDice} className="wallet-btn mt-3">Claim Prize</button>}
+                  <p className="text-lg label">
+                    Prize Pool: <span className="value">{formatZTC(dicePool)} ZTC</span>
+                  </p>
+                  <p className="text-lg label">
+                    Your Pending Prize: <span className="value">{formatZTC(dicePending)} ZTC</span>
+                  </p>
+                  {parseFloat(dicePending) > 0 && (
+                    <button onClick={claimPrizeDice} className="wallet-btn mt-3">
+                      Claim Prize
+                    </button>
+                  )}
                 </div>
                 <div className="mb-6">
-                  <h3 className="text-xl font-extrabold text-center" style={{ background: "linear-gradient(135deg,#60a5fa,#0ea5e9)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>Pick Your Number</h3>
+                  <h3
+                    className="text-xl font-extrabold text-center"
+                    style={{
+                      background: "linear-gradient(135deg,#60a5fa,#0ea5e9)",
+                      WebkitBackgroundClip: "text",
+                      backgroundClip: "text",
+                      color: "transparent"
+                    }}
+                  >
+                    Pick Your Number
+                  </h3>
                   <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 8, flexWrap: "wrap" }}>
-                    {[1,2,3,4,5,6].map((n) => (
-                      <div key={n} onClick={() => setDiceGuess(n)} style={{
-                        width: 48, height: 48, borderRadius: 10, border: `2px solid ${diceGuess === n ? "#2563eb" : "#60a5fa"}`,
-                        background: diceGuess === n ? "#dbeafe" : "#fff", color: "#0f172a",
-                        display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, cursor: "pointer"
-                      }}>{n}</div>
+                    {[1, 2, 3, 4, 5, 6].map((n) => (
+                      <div
+                        key={n}
+                        onClick={() => setDiceGuess(n)}
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 10,
+                          border: `2px solid ${diceGuess === n ? "#2563eb" : "#60a5fa"}`,
+                          background: diceGuess === n ? "#dbeafe" : "#fff",
+                          color: "#0f172a",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontWeight: 900,
+                          cursor: "pointer"
+                        }}
+                      >
+                        {n}
+                      </div>
                     ))}
                   </div>
-                  <h3 className="text-xl font-extrabold text-center" style={{ background: "linear-gradient(135deg,#60a5fa,#0ea5e9)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", marginTop: 12 }}>Place Your Bet</h3>
-                  <p className="text-center text-sm label">Min Bet: {diceMin} ZTC | Max Bet: {diceMax} ZTC</p>
-                  <input type="number" step="0.000000000000000001" placeholder="Bet Amount (ZTC)" value={diceBetAmount} onChange={(e) => setDiceBetAmount(e.target.value)} className="input mt-2" />
+                  <h3
+                    className="text-xl font-extrabold text-center"
+                    style={{
+                      background: "linear-gradient(135deg,#60a5fa,#0ea5e9)",
+                      WebkitBackgroundClip: "text",
+                      backgroundClip: "text",
+                      color: "transparent",
+                      marginTop: 12
+                    }}
+                  >
+                    Place Your Bet
+                  </h3>
+                  <p className="text-center text-sm label">
+                    Min Bet: {diceMin} ZTC | Max Bet: {diceMax} ZTC
+                  </p>
+                  <input
+                    type="number"
+                    step="0.000000000000000001"
+                    placeholder="Bet Amount (ZTC)"
+                    value={diceBetAmount}
+                    onChange={(e) => setDiceBetAmount(e.target.value)}
+                    className="input mt-2"
+                  />
                 </div>
-                <button onClick={rollDice} className={`btn-green ${uiPhase !== "idle" ? "btn-disabled" : ""}`} disabled={uiPhase !== "idle"}>Roll Dice!</button>
+                <button
+                  onClick={rollDice}
+                  className={`btn-green ${uiPhase !== "idle" ? "btn-disabled" : ""}`}
+                  disabled={uiPhase !== "idle"}
+                >
+                  Roll Dice!
+                </button>
               </div>
             )}
 
@@ -822,31 +1446,79 @@ function App() {
             {activeGame === "wheel" && (
               <div className="wheel-layout w-full mt-2">
                 <div className="card p-6 w-full max-w-md border-2 border-white/10">
-                  <h1 className="text-4xl font-extrabold text-center" style={{ background: "linear-gradient(135deg,#facc15,#f97316)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>Wheel</h1>
+                  <h1
+                    className="text-4xl font-extrabold text-center"
+                    style={{
+                      background: "linear-gradient(135deg,#facc15,#f97316)",
+                      WebkitBackgroundClip: "text",
+                      backgroundClip: "text",
+                      color: "transparent"
+                    }}
+                  >
+                    Wheel
+                  </h1>
                   <button onClick={connectWallet} className="wallet-btn w-full mb-6">
                     {walletAddress ? `Connected: ${shortAddr(walletAddress)}` : "Connect Wallet"}
                   </button>
                   <div className="text-center mb-6">
-                    <p className="text-lg label">Prize Pool: <span className="value">{formatZTC(wheelPool)} ZTC</span></p>
-                    <p className="text-lg label">Your Pending Prize: <span className="value">{formatZTC(wheelPending)} ZTC</span></p>
-                    {parseFloat(wheelPending) > 0 && <button onClick={claimPrizeWheel} className="wallet-btn mt-3">Claim Prize</button>}
+                    <p className="text-lg label">
+                      Prize Pool: <span className="value">{formatZTC(wheelPool)} ZTC</span>
+                    </p>
+                    <p className="text-lg label">
+                      Your Pending Prize: <span className="value">{formatZTC(wheelPending)} ZTC</span>
+                    </p>
+                    {parseFloat(wheelPending) > 0 && (
+                      <button onClick={claimPrizeWheel} className="wallet-btn mt-3">
+                        Claim Prize
+                      </button>
+                    )}
                   </div>
                   <div className="mb-6">
-                    <h3 className="text-xl font-extrabold text-center" style={{ background: "linear-gradient(135deg,#facc15,#f97316)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>Place Your Bet</h3>
-                    <p className="text-center text-sm label">Min Bet: {wheelMin} ZTC | Max Bet: {wheelMax} ZTC</p>
-                    <input type="number" step="0.000000000000000001" placeholder="Bet Amount (ZTC)" value={wheelBetAmount} onChange={(e) => setWheelBetAmount(e.target.value)} className="input mt-2" />
+                    <h3
+                      className="text-xl font-extrabold text-center"
+                      style={{
+                        background: "linear-gradient(135deg,#facc15,#f97316)",
+                        WebkitBackgroundClip: "text",
+                        backgroundClip: "text",
+                        color: "transparent"
+                      }}
+                    >
+                      Place Your Bet
+                    </h3>
+                    <p className="text-center text-sm label">
+                      Min Bet: {wheelMin} ZTC | Max Bet: {wheelMax} ZTC
+                    </p>
+                    <input
+                      type="number"
+                      step="0.000000000000000001"
+                      placeholder="Bet Amount (ZTC)"
+                      value={wheelBetAmount}
+                      onChange={(e) => setWheelBetAmount(e.target.value)}
+                      className="input mt-2"
+                    />
                   </div>
-                  <button onClick={spinWheel} className={`btn-green ${uiPhase !== "idle" ? "btn-disabled" : ""}`} disabled={uiPhase !== "idle"}>Spin the Wheel!</button>
+                  <button
+                    onClick={spinWheel}
+                    className={`btn-green ${uiPhase !== "idle" ? "btn-disabled" : ""}`}
+                    disabled={uiPhase !== "idle"}
+                  >
+                    Spin the Wheel!
+                  </button>
                 </div>
 
                 <div className="relative">
                   <div className="wheel">
                     <div className="wheel-ring" />
                     <div className="pointer" />
-                    <div className={`wheel-rotor ${wheelAnimate ? "" : "no-transition"}`} style={{ transform: `rotate(${wheelRotation}deg)` }}>
+                    <div
+                      className={`wheel-rotor ${wheelAnimate ? "" : "no-transition"}`}
+                      style={{ transform: `rotate(${wheelRotation}deg)` }}
+                    >
                       <div className="wheel-face" style={{ background: wheelGradient }} />
                       {WHEEL_SEGMENTS.map((lbl, i) => (
-                        <div key={i} className="seg-label" style={{ transform: labelTransform(i) }}>{lbl}</div>
+                        <div key={i} className="seg-label" style={{ transform: labelTransform(i) }}>
+                          {lbl}
+                        </div>
                       ))}
                     </div>
                     <div className="wheel-center" />
@@ -859,8 +1531,20 @@ function App() {
             {/* Coming Soon */}
             {activeGame === "coming" && (
               <div className="card p-6 w-full max-w-md mt-2 border-2 border-white/10" style={{ textAlign: "center" }}>
-                <h1 className="text-4xl font-extrabold" style={{ background: "linear-gradient(135deg,#a78bfa,#22c55e)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>Coming Soon</h1>
-                <p className="label" style={{ marginTop: 12 }}>A new game is on the way. Stay tuned!</p>
+                <h1
+                  className="text-4xl font-extrabold"
+                  style={{
+                    background: "linear-gradient(135deg,#a78bfa,#22c55e)",
+                    WebkitBackgroundClip: "text",
+                    backgroundClip: "text",
+                    color: "transparent"
+                  }}
+                >
+                  Coming Soon
+                </h1>
+                <p className="label" style={{ marginTop: 12 }}>
+                  A new game is on the way. Stay tuned!
+                </p>
               </div>
             )}
           </>
@@ -871,49 +1555,84 @@ function App() {
           <div className="card p-6 w-full max-w-md mt-2">
             <div className="flex items-center justify-between">
               <h1 className="text-3xl font-extrabold title-gradient">Profile</h1>
-              <button className="link-btn" onClick={() => setActivePage("games")}>Back</button>
+              <button className="link-btn" onClick={() => setActivePage("games")}>
+                Back
+              </button>
             </div>
 
             {!walletAddress ? (
-              <div className="label" style={{ marginTop: 12, textAlign: "center" }}>Connect your wallet to edit your profile.</div>
+              <div className="label" style={{ marginTop: 12, textAlign: "center" }}>
+                Connect your wallet to edit your profile.
+              </div>
             ) : (
               <>
-                <div className="label" style={{ marginTop: 12, wordBreak: "break-all" }}>Address: {walletAddress}</div>
+                <div className="label" style={{ marginTop: 12, wordBreak: "break-all" }}>
+                  Address: {walletAddress}
+                </div>
 
-                <div className="label" style={{ marginTop: 12 }}>Display name</div>
-                <input className="input" value={profileName} onChange={(e)=>setProfileName(e.target.value)} placeholder="Your name" />
+                <div className="label" style={{ marginTop: 12 }}>
+                  Display name
+                </div>
+                <input
+                  className="input"
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                  placeholder="Your name"
+                />
 
-                <div className="label" style={{ marginTop: 12 }}>Email</div>
-                <input className="input" value={profileEmail} onChange={(e)=>setProfileEmail(e.target.value)} placeholder="name@example.com" />
+                <div className="label" style={{ marginTop: 12 }}>
+                  Email
+                </div>
+                <input
+                  className="input"
+                  value={profileEmail}
+                  onChange={(e) => setProfileEmail(e.target.value)}
+                  placeholder="name@example.com"
+                />
 
-                <div className="label" style={{ marginTop: 16, opacity: 0.8 }}>Totals (all games)</div>
+                <div className="label" style={{ marginTop: 16, opacity: 0.8 }}>
+                  Totals (all games)
+                </div>
                 <div className="stat-row">
                   <span className="label">Total bets</span>
                   <span className="pill">
                     {formatZTC(
-                      (Number(cfStats.totalBet)||0) + (Number(diceStats.totalBet)||0) + (Number(wheelStats.totalBet)||0)
-                    )} ZTC
+                      (Number(cfStats.totalBet) || 0) +
+                        (Number(diceStats.totalBet) || 0) +
+                        (Number(wheelStats.totalBet) || 0)
+                    )}{" "}
+                    ZTC
                   </span>
                 </div>
                 <div className="stat-row">
                   <span className="label">Total won</span>
                   <span className="pill">
                     {formatZTC(
-                      (Number(cfStats.totalWon)||0) + (Number(diceStats.totalWon)||0) + (Number(wheelStats.totalWon)||0)
-                      + (Number(cfPending)||0) + (Number(dicePending)||0) + (Number(wheelPending)||0)
-                    )} ZTC
+                      (Number(cfStats.totalWon) || 0) +
+                        (Number(diceStats.totalWon) || 0) +
+                        (Number(wheelStats.totalWon) || 0) +
+                        (Number(cfPending) || 0) +
+                        (Number(dicePending) || 0) +
+                        (Number(wheelPending) || 0)
+                    )}{" "}
+                    ZTC
                   </span>
                 </div>
                 <div className="stat-row">
                   <span className="label">Total lost</span>
                   <span className="pill">
                     {formatZTC(
-                      (Number(cfStats.totalLost)||0) + (Number(diceStats.totalLost)||0) + (Number(wheelStats.totalLost)||0)
-                    )} ZTC
+                      (Number(cfStats.totalLost) || 0) +
+                        (Number(diceStats.totalLost) || 0) +
+                        (Number(wheelStats.totalLost) || 0)
+                    )}{" "}
+                    ZTC
                   </span>
                 </div>
 
-                <button className="btn-green" style={{ marginTop: 14 }} onClick={saveProfile}>Save</button>
+                <button className="btn-green" style={{ marginTop: 14 }} onClick={saveProfile}>
+                  Save
+                </button>
               </>
             )}
           </div>
@@ -982,7 +1701,9 @@ function App() {
           <div className="result-modal" style={{ maxWidth: 320 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-title">Notice</div>
             <div className="modal-msg" style={{ marginTop: 8 }}>{error}</div>
-            <button className="modal-btn" onClick={() => setError("")}>Close</button>
+            <button className="modal-btn" onClick={() => setError("")}>
+              Close
+            </button>
           </div>
         </div>
       )}
@@ -1002,40 +1723,76 @@ function App() {
       <div ref={statsRef} className={`stats-float ${statsOpen ? "open" : ""}`} role="dialog" aria-label="Player stats">
         <div className="stats-head">
           <div className="stats-title">Your Stats</div>
-          <button className="close-chip" onClick={() => setStatsOpen(false)}>{statsRefreshing ? "Refreshing…" : "Close"}</button>
+          <button className="close-chip" onClick={() => setStatsOpen(false)}>
+            {statsRefreshing ? "Refreshing…" : "Close"}
+          </button>
         </div>
         <div className="section">
-          <div className="section-title">{activeGame === "coinflip" ? "CoinFlip" : activeGame === "dice" ? "Dice" : "Wheel"}</div>
+          <div className="section-title">
+            {activeGame === "coinflip" ? "CoinFlip" : activeGame === "dice" ? "Dice" : "Wheel"}
+          </div>
 
           {activeGame === "coinflip" && (
             <>
-              <div className="stat-row"><span className="label">Total bets</span><span className="pill">{formatZTC(cfStats.totalBet)} ZTC</span></div>
-              <div className="stat-row"><span className="label">Total won</span><span className="pill">{formatZTC(totalWonCoinFlip)} ZTC</span></div>
-              <div className="stat-row"><span className="label">Total lost</span><span className="pill">{formatZTC(cfStats.totalLost)} ZTC</span></div>
+              <div className="stat-row">
+                <span className="label">Total bets</span>
+                <span className="pill">{formatZTC(cfStats.totalBet)} ZTC</span>
+              </div>
+              <div className="stat-row">
+                <span className="label">Total won</span>
+                <span className="pill">{formatZTC(totalWonCoinFlip)} ZTC</span>
+              </div>
+              <div className="stat-row">
+                <span className="label">Total lost</span>
+                <span className="pill">{formatZTC(cfStats.totalLost)} ZTC</span>
+              </div>
             </>
           )}
           {activeGame === "dice" && (
             <>
-              <div className="stat-row"><span className="label">Total bets</span><span className="pill">{formatZTC(diceStats.totalBet)} ZTC</span></div>
-              <div className="stat-row"><span className="label">Total won</span><span className="pill">{formatZTC(totalWonDice)} ZTC</span></div>
-              <div className="stat-row"><span className="label">Total lost</span><span className="pill">{formatZTC(diceStats.totalLost)} ZTC</span></div>
+              <div className="stat-row">
+                <span className="label">Total bets</span>
+                <span className="pill">{formatZTC(diceStats.totalBet)} ZTC</span>
+              </div>
+              <div className="stat-row">
+                <span className="label">Total won</span>
+                <span className="pill">{formatZTC(totalWonDice)} ZTC</span>
+              </div>
+              <div className="stat-row">
+                <span className="label">Total lost</span>
+                <span className="pill">{formatZTC(diceStats.totalLost)} ZTC</span>
+              </div>
             </>
           )}
           {activeGame === "wheel" && (
             <>
-              <div className="stat-row"><span className="label">Total bets</span><span className="pill">{formatZTC(wheelStats.totalBet)} ZTC</span></div>
-              <div className="stat-row"><span className="label">Total won</span><span className="pill">{formatZTC(totalWonWheel)} ZTC</span></div>
-              <div className="stat-row"><span className="label">Total lost</span><span className="pill">{formatZTC(wheelStats.totalLost)} ZTC</span></div>
+              <div className="stat-row">
+                <span className="label">Total bets</span>
+                <span className="pill">{formatZTC(wheelStats.totalBet)} ZTC</span>
+              </div>
+              <div className="stat-row">
+                <span className="label">Total won</span>
+                <span className="pill">{formatZTC(totalWonWheel)} ZTC</span>
+              </div>
+              <div className="stat-row">
+                <span className="label">Total lost</span>
+                <span className="pill">{formatZTC(wheelStats.totalLost)} ZTC</span>
+              </div>
             </>
           )}
 
           <div className="stat-row" style={{ marginTop: 6 }}>
             <span className="label">Unclaimed rewards (all)</span>
-            <span className="pill">💰 {formatZTC(
-              (Number(cfPending)||0)+(Number(dicePending)||0)+(Number(wheelPending)||0)
-            )} ZTC</span>
+            <span className="pill">
+              💰 {formatZTC((Number(cfPending) || 0) + (Number(dicePending) || 0) + (Number(wheelPending) || 0))} ZTC
+            </span>
           </div>
-          <button className="btn-green" onClick={withdrawAll} disabled={!walletAddress || (parseFloat(cfPending)+parseFloat(dicePending)+parseFloat(wheelPending)) <= 0} style={{ width: "100%", marginTop: 10 }}>
+          <button
+            className="btn-green"
+            onClick={withdrawAll}
+            disabled={!walletAddress || (parseFloat(cfPending) + parseFloat(dicePending) + parseFloat(wheelPending)) <= 0}
+            style={{ width: "100%", marginTop: 10 }}
+          >
             Withdraw All
           </button>
         </div>
