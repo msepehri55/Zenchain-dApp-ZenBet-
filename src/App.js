@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { ethers } from "ethers";
 
-/* WalletConnect Web3Modal v3 for ethers */
+/* WalletConnect Web3Modal v3 for ethers (added) */
 import {
   createWeb3Modal,
   defaultConfig,
@@ -61,7 +61,6 @@ const __initWeb3Modal = () => {
           "--w3m-accent": "#22c55e",
           "--w3m-border-radius-master": "16px"
         },
-        // Keep supported toggles only (avoids runtime init errors)
         enableEmail: false,
         enableOnramp: false,
         enableSwaps: false,
@@ -76,10 +75,10 @@ const __initWeb3Modal = () => {
 __initWeb3Modal();
 /* ===================== end Web3Modal init ===================== */
 
-/* ===================== Addresses ===================== */
-const coinflipAddress = "0x666ab08c1d8dca5d53162118a482fb51244d0e92";
-const diceAddress = "0x3b5e669589f792f43aad8eb995842dcd7192f430";
-const wheelAddress = "0x08d8f9b5200e370fd76a1fd184f5dce2e4a86f3b";
+/* ===================== Addresses (UPDATED) ===================== */
+const coinflipAddress = "0x5b50b28995ff5c0e2ab77708a155bd00ba121f84";
+const diceAddress     = "0xeb86beed4312705295b8df76e1bcfe9b48e293fc";
+const wheelAddress    = "0x6489207ae116fa97e1977800081417845358d5b1";
 
 /* ===================== ABIs ===================== */
 const coinflipABI = [
@@ -139,7 +138,7 @@ const wheelABI = [
   { inputs: [], name: "owner", outputs: [{ internalType: "address", name: "", type: "address" }], stateMutability: "view", type: "function" },
   { inputs: [{ internalType: "address", name: "", type: "address" }], name: "pendingPrizes", outputs: [{ internalType: "uint256", name: "", type: "uint256" }], stateMutability: "view", type: "function" },
 
-  // Optional additions (for future parts)
+  // Optional additions (might not exist on deployed contract)
   { inputs: [], name: "availableBank", outputs: [{ internalType: "uint256", name: "", type: "uint256" }], stateMutability: "view", type: "function" },
   { inputs: [{ internalType: "address", name: "user", type: "address" }], name: "getLastOutcome", outputs: [
       { internalType: "uint8", name: "outcomeIndex", type: "uint8" },
@@ -279,7 +278,7 @@ function App() {
   const [profileName, setProfileName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
 
-  /* Styles once (kept + home styles) */
+  /* Styles once (kept + mobile + improved hero) */
   useEffect(() => {
     if (document.getElementById("zenbet-styles")) return;
     const style = document.createElement("style");
@@ -386,33 +385,53 @@ function App() {
 
       /* Home page */
       .home-hero { max-width: 1100px; width: 100%; }
-      /* Zenchain-tinted glassmorphism hero */
-      .home-hero-inner { position: relative; overflow: hidden; border-radius: 20px; border: 1px solid rgba(34,197,94,0.35); background:
-        radial-gradient(1200px 700px at -10% -10%, rgba(34,197,94,0.18), rgba(0,0,0,0) 60%),
-        radial-gradient(900px 600px at 110% 110%, rgba(245,158,11,0.16), rgba(0,0,0,0) 60%),
-        linear-gradient(135deg, rgba(255,255,255,0.86), rgba(255,255,255,0.74));
-        box-shadow: 0 20px 44px rgba(0,0,0,.25);
-        padding: 18px; -webkit-backdrop-filter: blur(12px) saturate(1.15); backdrop-filter: blur(12px) saturate(1.15);
+      /* Zenchain-tinted dark glass hero */
+      .home-hero-inner { position: relative; overflow: hidden; border-radius: 22px; padding: 22px; border: 1px solid rgba(34,197,94,0.45); background:
+        radial-gradient(1200px 700px at -10% -10%, rgba(34,197,94,0.22), transparent 60%),
+        radial-gradient(900px 600px at 110% 110%, rgba(245,158,11,0.20), transparent 60%),
+        linear-gradient(135deg, rgba(10,47,35,0.88), rgba(9,26,34,0.86));
+        -webkit-backdrop-filter: blur(12px) saturate(1.15); backdrop-filter: blur(12px) saturate(1.15);
+        box-shadow: 0 28px 60px rgba(0,0,0,.38), inset 0 0 0 1px rgba(255,255,255,.06);
       }
-      .home-hero-inner::after { content:""; position:absolute; inset:0; pointer-events:none;
-        background-image: radial-gradient(circle at 1px 1px, rgba(34,197,94,0.18) 1px, transparent 1.2px);
-        background-size: 22px 22px; opacity: .28; mix-blend-mode: overlay;
+      .home-hero-inner::before { content: ""; position: absolute; inset: -1px; pointer-events: none; background-image:
+        linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px),
+        linear-gradient(0deg,  rgba(255,255,255,0.05) 1px, transparent 1px);
+        background-size: 28px 28px, 28px 28px; opacity: .22; mask-image: radial-gradient(85% 85% at 50% 40%, black 55%, transparent 75%);
       }
-      .home-title { font-size: 38px; font-weight: 900; background: linear-gradient(135deg, #22c55e, #a3e635); -webkit-background-clip:text; background-clip:text; color: transparent; }
-      .home-sub { color: #0f172a; font-weight: 700; opacity: .92; }
+      .home-hero-inner::after { content:""; position:absolute; inset:0; pointer-events:none; background:
+        radial-gradient(600px 280px at 18% 0%, rgba(34,197,94,.35), transparent 60%),
+        radial-gradient(520px 260px at 82% 100%, rgba(245,158,11,.28), transparent 60%);
+        mix-blend-mode: screen; opacity: .7;
+      }
+      .home-title { font-size: 38px; font-weight: 900; background: linear-gradient(135deg, #a7f3d0, #86efac, #facc15); -webkit-background-clip:text; background-clip:text; color: transparent; text-shadow: 0 10px 30px rgba(16,185,129,.35); }
+      .home-sub { color: #eafbf4; opacity: .95; }
       .home-cta { display:flex; gap:10px; flex-wrap:wrap; margin-top: 14px; }
-
       .home-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; width: 100%; }
       .home-card { position: relative; border-radius: 18px; overflow: hidden; min-height: 180px; box-shadow: 0 12px 26px rgba(0,0,0,.22); border: 1px solid var(--zen-border); cursor: pointer; }
-      /* darker bg for readability */
       .home-card-bg { position:absolute; inset:0; background-size: cover; background-position: center; filter: brightness(0.6); transform: scale(1.02); }
       .home-card-overlay { position:absolute; inset:0; background: linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.38) 40%, rgba(0,0,0,0.65) 100%); backdrop-filter: blur(1.5px); }
       .home-card-content { position: relative; z-index: 2; padding: 14px; color: #fff; }
       .home-card-title { font-size: 22px; font-weight: 900; text-shadow: 0 2px 16px rgba(0,0,0,.75), 0 0 2px rgba(0,0,0,.6); letter-spacing:.2px; }
       .home-card-desc { margin-top: 6px; font-weight: 800; opacity: .98; text-shadow: 0 1px 8px rgba(0,0,0,.7); }
       .home-play-btn { margin-top: 10px; background: linear-gradient(135deg,#34d399,#22c55e); color:#0f172a; font-weight:900; border:1px solid rgba(255,255,255,.35); padding:8px 12px; border-radius:10px; }
-
       .home-card:hover .home-card-bg { filter: brightness(0.68); transform: scale(1.06); transition: transform .35s ease, filter .35s ease; }
+
+      /* Mobile tweaks */
+      @media (max-width: 640px) {
+        .brand { font-size: 22px; }
+        .nav-btn { padding: 7px 10px; margin: 0 4px; font-size: 14px; }
+        .home-title { font-size: 28px; }
+        .home-hero-inner { padding: 16px; border-radius: 18px; }
+        .home-grid { grid-template-columns: 1fr; gap: 14px; }
+        .wheel { width: 280px; height: 280px; }
+        .coin3d, .dice-scene { width: 120px; height: 120px; }
+        .dice-cube, .dice-face { width: 120px; height: 120px; }
+        .dice-face { font-size: 36px; }
+        .handle { display: none; } /* reduce clutter on small screens */
+        .stats-float { bottom: 12px; top: auto; transform: translate(-105%, 0); max-width: 85vw; }
+        .stats-float.open { transform: translate(0, 0); }
+        .wheel-layout { flex-direction: column; }
+      }
     `;
     document.head.appendChild(style);
   }, []);
@@ -1089,8 +1108,8 @@ function App() {
 
   /* Totals including pending (kept) */
   const totalWonCoinFlip = (Number(cfStats.totalWon) || 0) + (Number(cfPending) || 0);
-  const totalWonDice = (Number(diceStats.totalWon) || 0) + (Number(dicePending) || 0);
-  const totalWonWheel = (Number(wheelStats.totalWon) || 0) + (Number(wheelPending) || 0);
+  const totalWonDice     = (Number(diceStats.totalWon) || 0) + (Number(dicePending) || 0);
+  const totalWonWheel    = (Number(wheelStats.totalWon) || 0) + (Number(wheelPending) || 0);
 
   // Assets with PUBLIC_URL for subpath hosting (updated for home bg)
   const [logoSrc, setLogoSrc] = useState(LOGO_SRC);
